@@ -19,12 +19,15 @@
    *    NE corner to 156 px west of the SE corner;
    *  - two opposite fronts: the same for each front, drawn independently;
    *  - two adjacent fronts: a parabola from the far end of one front to the far
-   *    end of the other, bending toward (but avoiding) their shared corner;
+   *    end of the other, bending toward (but avoiding) their shared corner.
+   *    `bend` places its control point between the middle of the corner-to-
+   *    corner chord (0: straight diagonal) and the shared corner (1: the curve
+   *    leaves each corner running along the edge);
    *  - three fronts: a parabola from the two corners of the land edge, with its
    *    vertex at the middle of the opposite edge;
    *  - four fronts: a circle centered on the map, touching the edge middles.
    */
-  function coastGuides(fronts, w, h, rng) {
+  function coastGuides(fronts, w, h, rng, bend) {
     const P = {
       NW: { x: 0, y: 0 }, NE: { x: w, y: 0 }, SE: { x: w, y: h }, SW: { x: 0, y: h }
     };
@@ -64,7 +67,9 @@
       const [a, b] = sorted;
       const shared = corner(a, b);
       const p0 = corner(a, OPPOSITE[b]), p2 = corner(b, OPPOSITE[a]);
-      const pts = bezier(p0, shared, p2);
+      const mx = (p0.x + p2.x) / 2, my = (p0.y + p2.y) / 2;
+      const c = { x: mx + bend * (shared.x - mx), y: my + bend * (shared.y - my) };
+      const pts = bezier(p0, c, p2);
       const far = corner(OPPOSITE[a], OPPOSITE[b]);
       return [{ line: pts, land: pts.concat([far]) }];
     }
@@ -180,13 +185,14 @@
       },
       { key: 'percent', label: 'Sea cells (%)', type: 'range', min: 0, max: 90, step: 1, default: 25 },
       { key: 'reach', label: 'Coast reach (% of map)', type: 'range', min: 5, max: 100, step: 1, default: 40 },
-      { key: 'strength', label: 'Altitude lowering', type: 'range', min: 0, max: 2, step: 0.05, default: 1 }
+      { key: 'strength', label: 'Altitude lowering', type: 'range', min: 0, max: 2, step: 0.05, default: 1 },
+      { key: 'bend', label: 'Curve bend (2 adjacent fronts)', type: 'range', min: 0, max: 1, step: 0.05, default: 0.4 }
     ],
 
     run(state, s, rng, ctx) {
       const fronts = s.fronts || [];
       const reach = Math.max(1, (s.reach / 100) * Math.min(ctx.width, ctx.height));
-      const guides = coastGuides(fronts, ctx.width, ctx.height, rng);
+      const guides = coastGuides(fronts, ctx.width, ctx.height, rng, s.bend);
       state.coastGuides = guides;
 
       // Lower the altitude according to the signed distance to the reference coast:
