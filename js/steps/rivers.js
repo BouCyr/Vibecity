@@ -129,6 +129,7 @@
         ]
       },
       { key: 'meanders', label: 'Meanders per course', type: 'range', min: 0, max: 10, step: 1, default: 5 },
+      { key: 'meanderTolerance', label: 'Detour slope tolerance (px)', type: 'range', min: 0, max: 60, step: 1, default: 20 },
       { key: 'meanderCandidates', label: 'Meander candidates', type: 'range', min: 1, max: 10, step: 1, default: 3 },
       { key: 'firstConfluence', label: 'First confluence from the mouth (px)', type: 'range', min: 0, max: 800, step: 10, default: 200 },
       { key: 'confluenceGap', label: 'Gap between confluences (px)', type: 'range', min: 0, max: 400, step: 10, default: 100 },
@@ -256,11 +257,14 @@
       };
 
       /**
-       * Shortest path (px) from a to b along which D strictly increases, its inner
-       * nodes avoiding `blocked` and the map border (and nodes joined to it).
-       * Returns node ids a → b, or null.
+       * Shortest path (px) from a to b for a meander detour: each step may go
+       * flat or slightly down the slope (D drops by `meanderTolerance` px at most),
+       * its inner nodes staying within that tolerance of [D(a), D(b)] and avoiding
+       * `blocked` and the map border (and nodes joined to it). The altitude is
+       * made to decrease downstream afterwards. Returns node ids a → b, or null.
        */
       const nearBorder = (v) => toBorder(v) || adj[v].some(toBorder);
+      const tol = s.meanderTolerance === undefined ? 20 : s.meanderTolerance;
       const shortestClimb = (a, b, D, blocked) => {
         const dist = new Map([[a, 0]]), prev = new Map();
         const heap = new Heap();
@@ -270,8 +274,8 @@
           if (d > dist.get(u)) continue;
           if (u === b) break;
           for (const v of adj[u]) {
-            if (!(D[v] > D[u] + 1e-9)) continue;
-            if (v !== b && (!(D[v] < D[b]) || blocked.has(v) || nearBorder(v))) continue;
+            if (!(D[v] >= D[u] - tol)) continue;
+            if (v !== b && (!(D[v] >= D[a] - tol && D[v] <= D[b] + tol) || blocked.has(v) || nearBorder(v))) continue;
             const nd = d + len(u, v);
             if (!dist.has(v) || nd < dist.get(v) - 1e-9) { dist.set(v, nd); prev.set(v, u); heap.push(nd, v); }
           }
