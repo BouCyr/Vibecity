@@ -88,6 +88,7 @@
   global.PointsStep = {
     id: 'points',
     title: 'Random points',
+    defaultVisible: false,
     settings: [
       { key: 'count', label: 'Number of points', type: 'range', min: 10, max: 10000, step: 10, default: 2000 },
       { key: 'margin', label: 'Margin', type: 'range', min: 0, max: 500, step: 5, default: 100 },

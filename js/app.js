@@ -8,8 +8,10 @@
   //   id, title, settings[]                       — UI description
   //   run(state, settings, rng, ctx) -> string?   — mutates shared state, returns info text
   //   draw(g, state, ctx)                         — renders its layer in map coordinates
+  //   defaultVisible (optional, default true)     — whether its layer is drawn initially
   const STEPS = [
-    window.PointsStep
+    window.PointsStep,
+    window.VoronoiStep
   ];
 
   const els = {
@@ -25,8 +27,9 @@
 
   // ---------- Config (seed + per-step settings), persisted in the URL hash ----------
 
-  const config = { seed: '', steps: {} };
+  const config = { seed: '', steps: {}, visible: {} };
   for (const step of STEPS) {
+    config.visible[step.id] = step.defaultVisible !== false;
     config.steps[step.id] = {};
     for (const s of step.settings) config.steps[step.id][s.key] = s.default;
   }
@@ -38,6 +41,9 @@
       if (typeof saved.seed === 'string') config.seed = saved.seed;
       for (const step of STEPS) {
         const src = saved.steps && saved.steps[step.id];
+        if (saved.visible && typeof saved.visible[step.id] === 'boolean') {
+          config.visible[step.id] = saved.visible[step.id];
+        }
         if (!src) continue;
         for (const s of step.settings) {
           if (src[s.key] !== undefined) config.steps[step.id][s.key] = src[s.key];
@@ -117,8 +123,17 @@
       head.innerHTML =
         '<span class="step-num">' + (i + 1) + '</span>' +
         '<span class="step-title"></span>' +
+        '<input class="step-visible" type="checkbox" title="Show layer">' +
         '<span class="step-caret">&#9662;</span>';
       head.querySelector('.step-title').textContent = step.title;
+      const vis = head.querySelector('.step-visible');
+      vis.checked = config.visible[step.id];
+      vis.addEventListener('click', (e) => e.stopPropagation());
+      vis.addEventListener('change', () => {
+        config.visible[step.id] = vis.checked;
+        saveToHash();
+        draw();
+      });
       head.addEventListener('click', () => li.classList.toggle('closed'));
       li.appendChild(head);
 
@@ -202,7 +217,9 @@
     g.setTransform(els.canvas.width / MAP_W, 0, 0, els.canvas.height / MAP_H, 0, 0);
     g.fillStyle = '#efe4c8';
     g.fillRect(0, 0, MAP_W, MAP_H);
-    for (const step of STEPS) step.draw(g, state, ctx);
+    for (const step of STEPS) {
+      if (config.visible[step.id]) step.draw(g, state, ctx);
+    }
   }
 
   window.addEventListener('resize', resize);

@@ -10,5 +10,8 @@ Procedural generator for the plan of a fictional medieval city. Plain HTML/JS, n
 ## Steps
 
 1. **Random points** — number of points, margin from the edges, distribution (true random or Poisson disk).
+2. **Voronoi diagram** — one cell per point, clipped to the map, with neighbor adjacency. Setting: Lloyd relaxation iterations (evens out cell sizes).
 
-Add a step by creating `js/steps/<name>.js` exposing `{ id, title, settings, run(state, settings, rng, ctx), draw(g, state, ctx) }` and adding it to `STEPS` in `js/app.js`.
+Each step's checkbox toggles whether its layer is drawn.
+
+Add a step by creating `js/steps/<name>.js` exposing `{ id, title, settings, run(state, settings, rng, ctx), draw(g, state, ctx), defaultVisible? }` and adding it to `STEPS` in `js/app.js`.
