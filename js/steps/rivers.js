@@ -138,6 +138,7 @@
       { key: 'meanderWavelength', label: 'Meander wavelength along the valley (px)', type: 'range', min: 150, max: 900, step: 10, default: 450 },
       { key: 'meanderAngle', label: 'Meander angle (°)', type: 'range', min: 0, max: 120, step: 5, default: 95 },
       { key: 'meanderIrregularity', label: 'Meander irregularity', type: 'range', min: 0, max: 0.5, step: 0.05, default: 0.15 },
+      { key: 'minCourseDistance', label: 'Minimum distance between courses (px)', type: 'range', min: 0, max: 300, step: 10, default: 80 },
       { key: 'firstConfluence', label: 'First confluence from the mouth (px)', type: 'range', min: 0, max: 800, step: 10, default: 200 },
       { key: 'confluenceGap', label: 'Gap between confluences (px)', type: 'range', min: 0, max: 400, step: 10, default: 100 },
       { key: 'fleuveWidth', label: 'Fleuve width (px)', type: 'range', min: 4, max: 60, step: 1, default: 20 },
@@ -213,7 +214,7 @@
        * node ids end → start.
        */
       const sortedByD = new WeakMap();
-      const longestClimb = (start, D, endOk, firstOk) => {
+      const longestClimb = (start, D, endOk, firstOk, stepOk) => {
         if (!sortedByD.has(D)) sortedByD.set(D, all.filter((i) => isFinite(D[i])).sort((a, b) => D[a] - D[b] || a - b));
         const order = sortedByD.get(D).filter((i) => D[i] >= D[start]);
         const best = new Float64Array(nodes.length).fill(-1);
@@ -231,6 +232,7 @@
           for (const v of exits.length ? exits : adj[u]) {
             if (!exits.length && !(D[v] > D[u] + 1e-9)) continue;
             if (u === start && firstOk && !firstOk(v)) continue;
+            if (stepOk && !stepOk(u, v)) continue;
             const l = best[u] + len(u, v);
             if (l > best[v] + 1e-9) { best[v] = l; prev[v] = u; }
             const sl = short[u] + len(u, v);
@@ -262,6 +264,30 @@
       const toBorder = (i) => {
         const side = sideOf(nodes[i], W, H);
         return side !== null && side !== exitSide;
+      };
+
+      /**
+       * Distance rule between courses: an edge u → v is allowed if v is at least
+       * `minCourseDistance` px from the courses already built, or, near them
+       * (the start of a tributary, at its junction), farther from them than u:
+       * the course moves away until it is far enough, then never comes back.
+       * Returns null when there is nothing to keep away from.
+       */
+      const awayFrom = (courses) => {
+        const minD = s.minCourseDistance === undefined ? 80 : s.minCourseDistance;
+        if (!minD || !courses.length) return null;
+        const segs = [];
+        for (const r of courses) for (let k = 0; k + 1 < r.nodes.length; k++) segs.push([nodes[r.nodes[k]], nodes[r.nodes[k + 1]]]);
+        const cache = new Float64Array(nodes.length).fill(-1);
+        const dO = (v) => {
+          if (cache[v] < 0) {
+            let best = Infinity;
+            for (const [a, b] of segs) best = Math.min(best, distToSegment(nodes[v].x, nodes[v].y, a, b).d);
+            cache[v] = best;
+          }
+          return cache[v];
+        };
+        return (u, v) => dO(v) >= minD || dO(v) > dO(u) + 1e-9;
       };
 
       /**
@@ -360,6 +386,7 @@
         };
         const blocked = new Set();
         for (const r of state.rivers) for (const v of r.nodes) blocked.add(v);
+        const stepOk = awayFrom(state.rivers);
         const corridor = Math.max(60, 1.3 * spacing);
         const sEnd = ideal[ideal.length - 1].s;
         const dist = new Map([[startNode, 0]]), prev = new Map();
@@ -380,6 +407,7 @@
             // Along the map border only at the very end, next to the source.
             if (!isEnd && nearBorder(v) && nv.s < sEnd - 200) continue;
             const l = len(uN, v);
+            if (stepOk && !stepOk(uN, v)) continue;
             // Steady progress along the curve.
             if (nv.s < nu.s - 40 || nv.s > nu.s + 3 * l + 40) continue;
             const nd = d + l * (1 + Math.pow((nu.d + nv.d) / 2 / 20, 2));
@@ -452,12 +480,13 @@
       let lastBank = 0;
       for (let t = 1; t < count; t++) {
         const D = distanceField(coast.concat(...state.rivers.map((r) => r.nodes)));
+        const stepOk = awayFrom(state.rivers);
         let found = null;
         for (let k = fPath.length - 2; k > 0; k--) {
           if (fromMouth[k] <= s.firstConfluence) continue;
           if (junctionArcs.some((a) => Math.abs(fromMouth[k] - a) < s.confluenceGap)) continue;
           const firstOk = lastBank ? (v) => bankAt(k, nodes[v]) === -lastBank : null;
-          const path = longestClimb(fPath[k], D, toBorder, firstOk);
+          const path = longestClimb(fPath[k], D, toBorder, firstOk, stepOk);
           if (!path) continue;
           const length = pathLength(path);
           // Longest wins; ties keep the junction nearest to the mouth (found first).
@@ -469,7 +498,7 @@
           if (angle !== null) found = { path: path, k: k, angle: angle, bank: bank, length: length };
         }
         if (!found) {
-          notes.push('river ' + t + ' skipped: no confluence between ' + MIN_CONFLUENCE_ANGLE + '° and ' + MAX_CONFLUENCE_ANGLE + '°' + (lastBank ? ' on the other bank' : ''));
+          notes.push('river ' + t + ' skipped: no confluence between ' + MIN_CONFLUENCE_ANGLE + '° and ' + MAX_CONFLUENCE_ANGLE + '° keeping away from the other courses' + (lastBank ? ' on the other bank' : ''));
           break;
         }
         // Meanders, as long as the confluence stays
