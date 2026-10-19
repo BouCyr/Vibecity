@@ -59,12 +59,13 @@
   };
 
   const CONFLUENCE_SCALE = 120;   // px (straight line) upstream used to measure a confluence angle
-  // Smoothing radii (px) under which a confluence angle must stay <= 90°: step 7
+  // Smoothing radii (px) under which a confluence angle must stay within the limits: step 7
   // smooths the courses afterwards, which can open a confluence by a few degrees.
   const CONFLUENCE_CHECK_RADII = [0, 10, 15, 20, 25, 30];
   // Minimum confluence angle (degrees), checked at these distances (px) from the
   // junction too, so that a branch cannot run alongside the other before joining.
   const MIN_CONFLUENCE_ANGLE = 25;
+  const MAX_CONFLUENCE_ANGLE = 75;
   const MIN_ANGLE_SCALES = [40, 80, CONFLUENCE_SCALE];
 
   /**
@@ -127,8 +128,8 @@
           { value: 'recompute', label: 'Recompute from coast and rivers' }
         ]
       },
-      { key: 'firstConfluence', label: 'First confluence from the mouth (px)', type: 'range', min: 0, max: 600, step: 10, default: 100 },
-      { key: 'confluenceGap', label: 'Gap between confluences (px)', type: 'range', min: 0, max: 400, step: 10, default: 50 },
+      { key: 'firstConfluence', label: 'First confluence from the mouth (px)', type: 'range', min: 0, max: 800, step: 10, default: 200 },
+      { key: 'confluenceGap', label: 'Gap between confluences (px)', type: 'range', min: 0, max: 400, step: 10, default: 100 },
       { key: 'fleuveWidth', label: 'Fleuve width (px)', type: 'range', min: 4, max: 60, step: 1, default: 20 },
       { key: 'riverWidth', label: 'River width (px)', type: 'range', min: 2, max: 40, step: 1, default: 15 },
       { key: 'junctionWidthGain', label: 'Fleuve widening per confluence (px)', type: 'range', min: 0, max: 15, step: 1, default: 3 },
@@ -311,10 +312,10 @@
             for (const sc of MIN_ANGLE_SCALES) narrowest = Math.min(narrowest, upstreamAngle(f2, f2.length - 1, t2, t2.length - 1, sc));
           }
           // Margins: step 7 splits the courses differently and may lower its radius.
-          if (angle <= 85 && narrowest >= MIN_CONFLUENCE_ANGLE + 5) found = { path: path, k: k, angle: angle, bank: bank, length: length };
+          if (angle <= MAX_CONFLUENCE_ANGLE - 5 && narrowest >= MIN_CONFLUENCE_ANGLE + 5) found = { path: path, k: k, angle: angle, bank: bank, length: length };
         }
         if (!found) {
-          notes.push('river ' + t + ' skipped: no confluence between ' + MIN_CONFLUENCE_ANGLE + '° and 90°' + (lastBank ? ' on the other bank' : ''));
+          notes.push('river ' + t + ' skipped: no confluence between ' + MIN_CONFLUENCE_ANGLE + '° and ' + MAX_CONFLUENCE_ANGLE + '°' + (lastBank ? ' on the other bank' : ''));
           break;
         }
         const join = found.path[found.path.length - 1];
