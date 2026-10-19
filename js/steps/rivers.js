@@ -1,7 +1,8 @@
 // Step 6 — rivers. The fleuve and its tributaries follow Voronoi edges between
-// two land cells, chosen by a "longest climb": from its mouth, a course is the
-// longest path (in px) to a map border along which the distance to the coast
-// (for a tributary: to the coast or an existing course) strictly increases.
+// two land cells, along a path from the mouth to a map border on which the
+// distance to the coast (for a tributary: to the coast or an existing course)
+// strictly increases. The border end is the one reached by the longest such
+// path; the course follows the shortest (default) or the longest one to it.
 // Altitude is then made consistent with the water, either by carving valleys
 // into the existing relief or by recomputing it from the distances to the coast
 // and to the rivers.
@@ -109,6 +110,13 @@
         ]
       },
       {
+        key: 'route', label: 'Course', type: 'select', default: 'shortest',
+        options: [
+          { value: 'shortest', label: 'Shortest climb (fewer meanders)' },
+          { value: 'longest', label: 'Longest climb' }
+        ]
+      },
+      {
         key: 'altitudeMode', label: 'Altitude', type: 'select', default: 'carve',
         options: [
           { value: 'carve', label: 'Carve valleys into the relief' },
@@ -178,11 +186,15 @@
       };
 
       /**
-       * Longest path (px) from `start` along which D strictly increases, ending on
-       * a node accepted by `endOk`; `firstOk(v)` filters the first step. Dynamic
-       * programming over the nodes sorted by D. A node (other than the start)
-       * with an edge to an `endOk` node is terminal: the course takes that edge
-       * and ends, even if a longer path exists. Returns node ids end → start.
+       * Course from `start` along which D strictly increases, ending on a node
+       * accepted by `endOk`; `firstOk(v)` filters the first step. Dynamic
+       * programming over the nodes sorted by D, keeping both the longest and the
+       * shortest path (px) to every node. The end is the one reached by the
+       * longest such path (the course crosses the map); with the 'shortest'
+       * route, the course then takes the shortest climbing path to that end
+       * (fewer meanders). A node (other than the start) with an edge to an
+       * `endOk` node is terminal: the course takes that edge and ends. Returns
+       * node ids end → start.
        */
       const sortedByD = new WeakMap();
       const longestClimb = (start, D, endOk, firstOk) => {
@@ -190,7 +202,10 @@
         const order = sortedByD.get(D).filter((i) => D[i] >= D[start]);
         const best = new Float64Array(nodes.length).fill(-1);
         const prev = new Int32Array(nodes.length).fill(-1);
+        const short = new Float64Array(nodes.length).fill(Infinity);
+        const sprev = new Int32Array(nodes.length).fill(-1);
         best[start] = 0;
+        short[start] = 0;
         for (const u of order) {
           if (best[u] < 0) continue;
           // A border node reached is an end, never a point to go through.
@@ -202,6 +217,8 @@
             if (u === start && firstOk && !firstOk(v)) continue;
             const l = best[u] + len(u, v);
             if (l > best[v] + 1e-9) { best[v] = l; prev[v] = u; }
+            const sl = short[u] + len(u, v);
+            if (sl < short[v] - 1e-9) { short[v] = sl; sprev[v] = u; }
           }
         }
         let end = -1;
@@ -210,8 +227,9 @@
           if (end < 0 || best[i] > best[end] + 1e-9) end = i;
         }
         if (end < 0) return null;
+        const back = s.route === 'longest' ? prev : sprev;
         const path = [];
-        for (let v = end; v >= 0; v = prev[v]) path.push(v);
+        for (let v = end; v >= 0; v = back[v]) path.push(v);
         return path;
       };
 
