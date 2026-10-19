@@ -138,3 +138,12 @@ input[type=text], input[type=number], select {
   background: #efe4c8;
   box-shadow: 0 4px 24px rgba(0,0,0,.45);
 }
+
+/* ---------- Narrow screens: panel on top, map below ---------- */
+@media (max-width: 700px) {
+  body { flex-direction: column; }
+  #panel, #panel.collapsed { width: 100%; height: auto; max-height: 45%; border-right: 0; border-bottom: 1px solid var(--line); }
+  #panel.collapsed .panel-header { justify-content: space-between; padding: 10px 12px; }
+  #panel.collapsed h1 { display: block; }
+  #stage { flex: 1; min-height: 0; height: auto; }
+}

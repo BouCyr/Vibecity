@@ -56,7 +56,11 @@
   }
 
   function saveToHash() {
-    history.replaceState(null, '', '#' + encodeURIComponent(JSON.stringify(config)));
+    try {
+      history.replaceState(null, '', '#' + encodeURIComponent(JSON.stringify(config)));
+    } catch (e) {
+      // Sandboxed frames may refuse URL changes; sharing by URL is then unavailable.
+    }
   }
 
   // ---------- Panel UI ----------
