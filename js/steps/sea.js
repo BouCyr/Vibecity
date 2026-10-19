@@ -17,7 +17,8 @@
    *    corner, and reaches the adjacent edge `offset` px inland from the other
    *    corner. E.g. front E, from the north, 156 px: from 156 px south of the
    *    NE corner to 156 px west of the SE corner;
-   *  - two opposite fronts: the front edges themselves;
+   *  - two opposite fronts: the same, both with one offset; the second starts
+   *    from the other end, so the two coasts are parallel;
    *  - two adjacent fronts: a parabola from the far end of one front to the far
    *    end of the other, bending toward (but avoiding) their shared corner;
    *  - three fronts: a parabola from the two corners of the land edge, with its
@@ -40,10 +41,6 @@
       }
       return pts;
     }
-    const edge = (f) => {
-      const ends = f === 'N' ? [P.NW, P.NE] : f === 'S' ? [P.SW, P.SE] : f === 'W' ? [P.NW, P.SW] : [P.NE, P.SE];
-      return { line: ends, land: null };
-    };
 
     if (sorted.length === 4) {
       const pts = [];
@@ -72,20 +69,29 @@
       const far = corner(OPPOSITE[a], OPPOSITE[b]);
       return [{ line: pts, land: pts.concat([far]) }];
     }
-    if (sorted.length === 1) {
-      const f = sorted[0];
-      const ends = f === 'N' || f === 'S' ? ['W', 'E'] : ['N', 'S'];
-      if (rng.random() < 0.5) ends.reverse();
-      const offset = rng.int(100, 250);
-      const e0 = corner(f, ends[0]), e1 = corner(f, ends[1]);
+    // Slanted coast for front f, starting from the `from` end of the edge.
+    const slanted = (f, from, offset) => {
+      const e0 = corner(f, from), e1 = corner(f, OPPOSITE[from]);
       const len = Math.hypot(e1.x - e0.x, e1.y - e0.y);
       const a = { x: e0.x + ((e1.x - e0.x) / len) * offset, y: e0.y + ((e1.y - e0.y) / len) * offset };
       // Inward normal of edge f.
       const nx = f === 'W' ? 1 : f === 'E' ? -1 : 0, ny = f === 'N' ? 1 : f === 'S' ? -1 : 0;
       const b = { x: e1.x + nx * offset, y: e1.y + ny * offset };
-      return [{ line: [a, b], sea: [a, e1, b], from: ends[0], offset: offset }];
+      return { line: [a, b], sea: [a, e1, b], from: from, offset: offset };
+    };
+    if (sorted.length === 1 || sorted.length === 2) {
+      // One front, or two opposite fronts (adjacent ones were handled above).
+      const f = sorted[0];
+      const ends = f === 'N' || f === 'S' ? ['W', 'E'] : ['N', 'S'];
+      const from = ends[rng.random() < 0.5 ? 1 : 0];
+      const offset = rng.int(100, 250);
+      const guides = [slanted(f, from, offset)];
+      // The opposite front starts from the other end with the same offset, so
+      // both coasts are parallel and lean the same way.
+      if (sorted.length === 2) guides.push(slanted(sorted[1], OPPOSITE[from], offset));
+      return guides;
     }
-    return sorted.map(edge);
+    return [];
   }
 
   function distToPolyline(x, y, pts) {
@@ -217,9 +223,9 @@
       state.seaFronts = fronts.slice();
       updateSeaFlags(state);
 
-      const slant = guides.length === 1 && guides[0].from
-        ? 'coast from ' + guides[0].from + ', offset ' + guides[0].offset + ' px; ' : '';
-      return slant + nSea + ' sea cells, sea level ' + (nSea ? state.seaLevel.toFixed(2) : '—') + ', ' + state.coastline.length + ' coast edges';
+      const slant = guides.filter((g) => g.from).map((g) => g.from).join('/');
+      const slantInfo = slant ? 'coast from ' + slant + ', offset ' + guides[0].offset + ' px; ' : '';
+      return slantInfo + nSea + ' sea cells, sea level ' + (nSea ? state.seaLevel.toFixed(2) : '—') + ', ' + state.coastline.length + ' coast edges';
     },
 
     draw(g, state) {
