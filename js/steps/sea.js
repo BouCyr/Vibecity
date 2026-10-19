@@ -95,11 +95,14 @@
   }
 
   /** Signed distance to the reference coast: positive on land, negative at sea. */
-  function coastDistance(x, y, guides) {
+  function coastDistance(x, y, guides, w, h) {
+    // Points on the map border (Voronoi nodes) lie on the land polygon's own
+    // border, where the inside test is unreliable: test a point nudged inward.
+    const tx = Math.min(w - 1, Math.max(1, x)), ty = Math.min(h - 1, Math.max(1, y));
     let best = Infinity;
     for (const g of guides) {
       let d = distToPolyline(x, y, g.line);
-      if (g.land && !insidePolygon(x, y, g.land)) d = -d;
+      if (g.land && !insidePolygon(tx, ty, g.land)) d = -d;
       if (d < best) best = d;
     }
     return best;
@@ -167,7 +170,7 @@
       // Lower the altitude according to the signed distance to the reference coast:
       // fading out over `reach` on the land side, full (and more) on the sea side.
       const lowering = (x, y) => {
-        const d = coastDistance(x, y, guides) / reach;
+        const d = coastDistance(x, y, guides, ctx.width, ctx.height) / reach;
         if (d >= 1) return 0;
         if (d <= 0) return s.strength * (1 + Math.min(1, -d));
         return s.strength * (1 - smoothstep(d));
