@@ -149,7 +149,7 @@
 
   global.CoastStep = {
     id: 'coast',
-    title: 'Smooth coast',
+    title: 'Smooth coast & rivers',
     // Above the altitude, under the Voronoi edges.
     zIndex: -0.4,
     settings: [
@@ -160,8 +160,21 @@
       const nodes = state.nodes;
       const { loops, degree } = seaLoops(state);
       const onBorder = (n) => n.x <= EPS || n.y <= EPS || n.x >= ctx.width - EPS || n.y >= ctx.height - EPS;
-      const pinned = (id) => onBorder(nodes[id]) || degree.get(id) > 1;
+      // River sources, mouths and confluences stay in place too.
+      const riverPins = state.riverPins || new Set();
+      const pinned = (id) => onBorder(nodes[id]) || degree.get(id) > 1 || riverPins.has(id);
       const runs = coastRuns(loops, pinned);
+      // Rivers: open runs, split at pinned nodes (the fleuve at each confluence).
+      (state.rivers || []).forEach((r) => {
+        let run = null;
+        r.nodes.forEach((id, k) => {
+          if (run) { run.nodes.push(id); run.widths.push(r.widths[k]); }
+          if (!run || (pinned(id) && k < r.nodes.length - 1)) {
+            run = { nodes: [id], widths: [r.widths[k]], closed: false, river: true };
+            runs.push(run);
+          }
+        });
+      });
       // Beyond ~0.6 cell spacing, moved nodes can fold small cells: cap the radius.
       const spacing = Math.sqrt((ctx.width * ctx.height) / Math.max(1, state.cells.length));
       const radius = Math.min(s.radius, 0.6 * spacing);
@@ -170,12 +183,23 @@
       const moved = new Map();
       const edgePoints = new Map();
       const paths = [];
+      const riverPaths = [];
       for (const run of runs) {
         const src = run.nodes.map((id) => ({ x: nodes[id].x, y: nodes[id].y }));
         if (run.closed && src.length < 3) continue;
         const r = resample(src, run.closed);
         const sm = smooth(r.pts, run.closed, radius);
-        paths.push({ points: sm, closed: run.closed });
+        if (run.river) {
+          // Width per smoothed point, interpolated between the run's nodes.
+          const widths = new Array(sm.length);
+          for (let i = 0; i + 1 < r.index.length; i++) {
+            const ia = r.index[i], ib = r.index[i + 1];
+            for (let j = ia; j <= ib; j++) widths[j] = run.widths[i] + (run.widths[i + 1] - run.widths[i]) * ((j - ia) / Math.max(1, ib - ia));
+          }
+          riverPaths.push({ points: sm, widths: widths });
+        } else {
+          paths.push({ points: sm, closed: run.closed });
+        }
         const count = run.nodes.length - (run.closed ? 0 : 1);
         for (let i = 0; i < count; i++) {
           const a = run.nodes[i], b = run.nodes[(i + 1) % run.nodes.length];
@@ -233,6 +257,7 @@
 
       state.coastEdgePoints = edgePoints;
       state.coastPaths = paths;
+      state.riverPaths = state.rivers && state.rivers.length ? riverPaths : null;
       return moved.size + ' coast nodes moved (max ' + maxMove.toFixed(0) + ' px), ' +
         edgePoints.size + ' coast edges, ' + inserted / 2 + ' coast points' +
         (recentered ? ', ' + recentered + ' cell centers moved' : '') +

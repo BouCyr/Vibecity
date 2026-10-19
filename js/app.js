@@ -16,6 +16,7 @@
     window.AltitudeStep,
     window.SeaStep,
     window.SeaCleanupStep,
+    window.RiversStep,
     window.CoastStep
   ];
 
