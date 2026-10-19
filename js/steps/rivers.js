@@ -291,8 +291,8 @@
        * them), up to `meanders` times: draw `meanderCandidates` nodes at random
        * more than 5 edges and 150 px (along the course) after the reference
        * (first the start: mouth or junction), keep the one nearest to the start,
-       * and replace the stretch from 3 edges before it to 3 edges after it by the
-       * shortest climbing path that goes round it (2 edges if there is none).
+       * and replace the stretch from 4 edges before it to 4 edges after it by the
+       * shortest climbing path that goes round it (then 3, then 2 edges).
        * The next draw starts at the upstream end of the detour (or at the point
        * if there was no detour). `ok(path)` can refuse a detour.
        */
@@ -310,7 +310,8 @@
           const blocked = new Set(p);
           for (const r of state.rivers) for (const v of r.nodes) blocked.add(v);
           let next = null;
-          for (const g of [3, 2]) {
+          for (const g of [4, 3, 2]) {
+            if (i + g >= p.length) continue;
             const detour = shortestClimb(p[i - g], p[i + g], D, blocked);
             if (!detour) continue;
             const np = p.slice(0, i - g).concat(detour, p.slice(i + g + 1));
