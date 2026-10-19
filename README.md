@@ -13,6 +13,7 @@ Procedural generator for the plan of a fictional medieval city. Plain HTML/JS, n
 2. **Voronoi diagram** — one cell per point, clipped to the map, with neighbor adjacency and shared nodes (Voronoi vertices). Setting: Lloyd relaxation iterations (evens out cell sizes).
 3. **Altitude** — altitude in [0, 1] for every cell center and node, from three layers of seeded simplex noise (hills, relief, local bumps), each with a size and a weight.
 4. **Sea** — choose the sea fronts (N/E/S/W) and the share of sea cells (default 25%). Altitude is lowered near the fronts (reach, strength; the distances to several fronts are combined with a soft minimum so corners are rounded, see *Corner rounding*), rescaled to [0, 1], then the lowest cells become sea. Coast edges and coastal nodes are recorded. Isolated sea/land cells are cleaned up in the next step.
+5. **Sea clean-up** — (a) land cells along a sea-front edge become sea, unless linked through such land cells to the land cell of a corner that is not between two sea fronts; (b) sea areas reaching no sea front are filled up to the lowest surrounding land altitude (with no sea front, only the largest sea area is kept). Sea altitude is then set to 0. Its layer outlines the changed cells (blue: became sea, orange: became land).
 
 Each step's checkbox toggles whether its layer is drawn.
 

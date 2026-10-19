@@ -14,7 +14,8 @@
     window.PointsStep,
     window.VoronoiStep,
     window.AltitudeStep,
-    window.SeaStep
+    window.SeaStep,
+    window.SeaCleanupStep
   ];
 
   const els = {

@@ -23,6 +23,36 @@
   /** Map key for the edge between two nodes, independent of direction. */
   const edgeKey = (a, b) => (a < b ? a + ',' + b : b + ',' + a);
 
+  /**
+   * Recompute what depends on the cells' sea flags: node flags (sea if all its
+   * cells are sea, coast if it touches both) and the coastline (edges between a
+   * sea cell and a land cell, as node id pairs).
+   */
+  function updateSeaFlags(state) {
+    for (const n of state.nodes) {
+      let sea = 0;
+      for (const ci of n.cells) if (state.cells[ci].sea) sea++;
+      n.sea = sea === n.cells.length;
+      n.coast = sea > 0 && sea < n.cells.length;
+    }
+
+    const owner = new Map();
+    const coast = [];
+    state.cells.forEach((c, ci) => {
+      const ns = c.nodes;
+      for (let k = 0; k < ns.length; k++) {
+        const a = ns[k], b = ns[(k + 1) % ns.length];
+        const key = edgeKey(a, b);
+        const other = owner.get(key);
+        if (other === undefined) owner.set(key, ci);
+        else if (state.cells[other].sea !== c.sea) coast.push([a, b]);
+      }
+    });
+    state.coastline = coast;
+  }
+
+  global.updateSeaFlags = updateSeaFlags;
+
   global.SeaStep = {
     id: 'sea',
     title: 'Sea',
@@ -76,42 +106,18 @@
       for (let k = 0; k < nSea; k++) state.cells[order[k]].sea = true;
       state.seaLevel = nSea > 0 ? state.cells[order[nSea - 1]].altitude : -Infinity;
 
-      // Node flags: sea if all its cells are sea, coast if it touches both.
-      for (const n of state.nodes) {
-        let sea = 0;
-        for (const ci of n.cells) if (state.cells[ci].sea) sea++;
-        n.sea = sea === n.cells.length;
-        n.coast = sea > 0 && sea < n.cells.length;
-      }
+      state.seaFronts = fronts.slice();
+      updateSeaFlags(state);
 
-      // Coastline: edges between a sea cell and a land cell.
-      const owner = new Map();
-      const coast = [];
-      state.cells.forEach((c, ci) => {
-        const ns = c.nodes;
-        for (let k = 0; k < ns.length; k++) {
-          const a = ns[k], b = ns[(k + 1) % ns.length];
-          const key = edgeKey(a, b);
-          const other = owner.get(key);
-          if (other === undefined) owner.set(key, ci);
-          else if (state.cells[other].sea !== c.sea) coast.push([a, b]);
-        }
-      });
-      state.coastline = coast;
-
-      return nSea + ' sea cells, sea level ' + (nSea ? state.seaLevel.toFixed(2) : '—') + ', ' + coast.length + ' coast edges';
+      return nSea + ' sea cells, sea level ' + (nSea ? state.seaLevel.toFixed(2) : '—') + ', ' + state.coastline.length + ' coast edges';
     },
 
     draw(g, state) {
-      const level = Math.max(1e-6, state.seaLevel);
+      g.fillStyle = '#5f86a8';
+      g.strokeStyle = g.fillStyle;
+      g.lineWidth = 1;
       for (const c of state.cells) {
         if (!c.sea || !c.poly.length) continue;
-        // Shallow water near the coast, deeper blue further down.
-        const t = Math.max(0, Math.min(1, c.altitude / level));
-        const r = Math.round(70 + 60 * t), gg = Math.round(110 + 55 * t), b = Math.round(150 + 40 * t);
-        g.fillStyle = 'rgb(' + r + ',' + gg + ',' + b + ')';
-        g.strokeStyle = g.fillStyle;
-        g.lineWidth = 1;
         g.beginPath();
         g.moveTo(c.poly[0].x, c.poly[0].y);
         for (let k = 1; k < c.poly.length; k++) g.lineTo(c.poly[k].x, c.poly[k].y);
