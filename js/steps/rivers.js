@@ -10,7 +10,6 @@
 
   const EPS = 1e-6;
   const SIDES = ['N', 'E', 'S', 'W'];
-  const OPPOSITE = { N: 'S', S: 'N', E: 'W', W: 'E' };
   const edgeKey = (a, b) => (a < b ? a + ',' + b : b + ',' + a);
   const smoothstep = (t) => t * t * (3 - 2 * t);
 
@@ -101,9 +100,8 @@
     zIndex: -0.35,
     settings: [
       {
-        key: 'count', label: 'Watercourses', type: 'select', default: 'auto',
+        key: 'count', label: 'Watercourses', type: 'select', default: '3',
         options: [
-          { value: 'auto', label: 'Auto (2 land edges: 1, 3: 2, no sea: 2)' },
           { value: '0', label: 'None' },
           { value: '1', label: '1 (fleuve)' },
           { value: '2', label: '2 (fleuve + 1 river)' },
@@ -136,15 +134,11 @@
 
       // How many courses.
       const fronts = state.seaFronts || [];
-      const landSides = SIDES.filter((f) => fronts.indexOf(f) < 0);
       // Without a sea, the nodes of a drawn exit edge play the coast's role.
       const noSea = !fronts.length;
-      let count;
-      if (s.count === 'auto') {
-        count = noSea ? 2 : landSides.length === 3 ? 2
-          : landSides.length === 2 && OPPOSITE[landSides[0]] !== landSides[1] ? 1 : 0;
-      } else count = Math.min(Number(s.count), noSea ? 3 : landSides.length);
-      if (!count) return 'no watercourse (' + landSides.length + ' land edges)';
+      // Fleuve + up to 2 tributaries (an old 'auto' value counts as 3).
+      const count = s.count === 'auto' ? 3 : Math.max(0, Math.min(3, Number(s.count) || 0));
+      if (!count) return 'no watercourse';
 
       // Graph: edges between two land cells.
       const owners = new Map();
@@ -189,8 +183,10 @@
        * with an edge to an `endOk` node is terminal: the course takes that edge
        * and ends, even if a longer path exists. Returns node ids end → start.
        */
+      const sortedByD = new WeakMap();
       const longestClimb = (start, D, endOk, firstOk) => {
-        const order = all.filter((i) => isFinite(D[i]) && D[i] >= D[start]).sort((a, b) => D[a] - D[b] || a - b);
+        if (!sortedByD.has(D)) sortedByD.set(D, all.filter((i) => isFinite(D[i])).sort((a, b) => D[a] - D[b] || a - b));
+        const order = sortedByD.get(D).filter((i) => D[i] >= D[start]);
         const best = new Float64Array(nodes.length).fill(-1);
         const prev = new Int32Array(nodes.length).fill(-1);
         best[start] = 0;
@@ -244,7 +240,9 @@
       const fleuveSide = sideOf(nodes[fPath[0]], W, H);
       state.rivers.push({ kind: 'fleuve', side: fleuveSide, nodes: fPath, joins: null, mouth: mouth });
 
-      // Tributaries: junctions walked from the mouth upstream, alternating banks.
+      // Tributaries: every fleuve node more than `firstConfluence` px from the mouth
+      // is tried as a junction; the longest valid tributary is kept. The next one
+      // must be on the other bank, `confluenceGap` px or more from previous junctions.
       const fPts = fPath.map((v) => nodes[v]);
       const fromMouth = new Array(fPath.length).fill(0); // arc length from the mouth
       for (let k = fPath.length - 2; k >= 0; k--) fromMouth[k] = fromMouth[k + 1] + len(fPath[k], fPath[k + 1]);
@@ -254,18 +252,29 @@
         const dx = J.x - up.x, dy = J.y - up.y;
         return Math.sign(dx * (p.y - J.y) - dy * (p.x - J.x)) || 1;
       };
+      const pathLength = (path) => {
+        let l = 0;
+        for (let i = 0; i + 1 < path.length; i++) l += len(path[i], path[i + 1]);
+        return l;
+      };
       const notes = [];
-      let minArc = s.firstConfluence, lastBank = 0;
+      const junctionArcs = [];
+      let lastBank = 0;
       for (let t = 1; t < count; t++) {
         const D = distanceField(coast.concat(...state.rivers.map((r) => r.nodes)));
         let found = null;
-        for (let k = fPath.length - 2; k > 0 && !found; k--) {
-          if (fromMouth[k] <= minArc) continue;
-          const j = fPath[k];
+        for (let k = fPath.length - 2; k > 0; k--) {
+          if (fromMouth[k] <= s.firstConfluence) continue;
+          if (junctionArcs.some((a) => Math.abs(fromMouth[k] - a) < s.confluenceGap)) continue;
           const firstOk = lastBank ? (v) => bankAt(k, nodes[v]) === -lastBank : null;
-          const path = longestClimb(j, D, toBorder, firstOk);
+          const path = longestClimb(fPath[k], D, toBorder, firstOk);
           if (!path) continue;
+          const length = pathLength(path);
+          // Longest wins; ties keep the junction nearest to the mouth (found first).
+          if (found && length <= found.length + 1e-9) continue;
           const pts = path.map((v) => nodes[v]);
+          const bank = bankAt(k, pointUpstream(pts, pts.length - 1, CONFLUENCE_SCALE));
+          if (lastBank && bank !== -lastBank) continue;
           // Worst angle over the smoothing radii step 7 may use (junction kept in place).
           let angle = 0;
           for (const r of CONFLUENCE_CHECK_RADII) {
@@ -273,9 +282,8 @@
             const t2 = r ? smoothPolyline(pts, false, r) : pts;
             angle = Math.max(angle, upstreamAngle(f2, f2.length - 1, t2, t2.length - 1));
           }
-          const bank = bankAt(k, pointUpstream(pts, pts.length - 1, CONFLUENCE_SCALE));
           // 2° margin: step 7 splits and smooths the courses slightly differently.
-          if (angle <= 88 && (!lastBank || bank === -lastBank)) found = { path: path, k: k, angle: angle, bank: bank };
+          if (angle <= 88) found = { path: path, k: k, angle: angle, bank: bank, length: length };
         }
         if (!found) {
           notes.push('river ' + t + ' skipped: no confluence at 90° or less' + (lastBank ? ' on the other bank' : ''));
@@ -283,9 +291,10 @@
         }
         const join = found.path[found.path.length - 1];
         state.rivers.push({ kind: 'river', side: sideOf(nodes[found.path[0]], W, H), nodes: found.path, joins: 0, mouth: join });
-        notes.push('river from ' + state.rivers[state.rivers.length - 1].side + ' joins ' + Math.round(fromMouth[found.k]) +
-          ' px upstream of the mouth, ' + (found.bank > 0 ? 'right' : 'left') + ' bank, ' + Math.round(found.angle) + '°');
-        minArc = fromMouth[found.k] + s.confluenceGap;
+        notes.push('river from ' + state.rivers[state.rivers.length - 1].side + ', ' + Math.round(found.length) + ' px, joins ' +
+          Math.round(fromMouth[found.k]) + ' px upstream of the mouth, ' + (found.bank > 0 ? 'right' : 'left') + ' bank, ' +
+          Math.round(found.angle) + '°');
+        junctionArcs.push(fromMouth[found.k]);
         lastBank = found.bank;
       }
 
