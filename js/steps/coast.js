@@ -180,38 +180,88 @@
       });
       // Beyond ~0.6 cell spacing, moved nodes can fold small cells: cap the radius.
       const spacing = Math.sqrt((ctx.width * ctx.height) / Math.max(1, state.cells.length));
-      const radius = Math.min(s.radius, 0.6 * spacing);
+      let radius = Math.min(s.radius, 0.6 * spacing);
 
-      // Smooth each run, then record moved nodes and in-between points per edge.
-      const moved = new Map();
-      const edgePoints = new Map();
-      const paths = [];
-      const riverPaths = [];
-      for (const run of runs) {
-        const src = run.nodes.map((id) => ({ x: nodes[id].x, y: nodes[id].y }));
-        if (run.closed && src.length < 3) continue;
-        const r = resample(src, run.closed);
-        const sm = smooth(r.pts, run.closed, radius);
-        if (run.river) {
-          // Width per smoothed point, interpolated between the run's nodes.
-          const widths = new Array(sm.length);
-          for (let i = 0; i + 1 < r.index.length; i++) {
-            const ia = r.index[i], ib = r.index[i + 1];
-            for (let j = ia; j <= ib; j++) widths[j] = run.widths[i] + (run.widths[i + 1] - run.widths[i]) * ((j - ia) / Math.max(1, ib - ia));
+      /** Smooth every run at radius r: moved node positions, in-between points per edge, paths. */
+      const smoothRuns = (r) => {
+        const moved = new Map();
+        const edgePoints = new Map();
+        const paths = [];
+        const riverPaths = [];
+        for (const run of runs) {
+          const src = run.nodes.map((id) => ({ x: nodes[id].x, y: nodes[id].y }));
+          if (run.closed && src.length < 3) continue;
+          const rs = resample(src, run.closed);
+          const sm = smooth(rs.pts, run.closed, r);
+          if (run.river) {
+            // Width per smoothed point, interpolated between the run's nodes.
+            const widths = new Array(sm.length);
+            for (let i = 0; i + 1 < rs.index.length; i++) {
+              const ia = rs.index[i], ib = rs.index[i + 1];
+              for (let j = ia; j <= ib; j++) widths[j] = run.widths[i] + (run.widths[i + 1] - run.widths[i]) * ((j - ia) / Math.max(1, ib - ia));
+            }
+            riverPaths.push({ points: sm, widths: widths });
+          } else {
+            paths.push({ points: sm, closed: run.closed });
           }
-          riverPaths.push({ points: sm, widths: widths });
-        } else {
-          paths.push({ points: sm, closed: run.closed });
+          const count = run.nodes.length - (run.closed ? 0 : 1);
+          for (let i = 0; i < count; i++) {
+            const a = run.nodes[i], b = run.nodes[(i + 1) % run.nodes.length];
+            const ia = rs.index[i];
+            const ib = i + 1 < rs.index.length ? rs.index[i + 1] : sm.length;
+            if (run.closed || i > 0) moved.set(a, sm[ia]);
+            edgePoints.set(edgeKey(a, b), { a: a, points: sm.slice(ia + 1, ib) });
+          }
         }
-        const count = run.nodes.length - (run.closed ? 0 : 1);
-        for (let i = 0; i < count; i++) {
-          const a = run.nodes[i], b = run.nodes[(i + 1) % run.nodes.length];
-          const ia = r.index[i];
-          const ib = i + 1 < r.index.length ? r.index[i + 1] : sm.length;
-          if (run.closed || i > 0) moved.set(a, sm[ia]);
-          edgePoints.set(edgeKey(a, b), { a: a, points: sm.slice(ia + 1, ib) });
+        return { moved: moved, edgePoints: edgePoints, paths: paths, riverPaths: riverPaths };
+      };
+
+      /** Cell polygon from node positions `pos` and the in-between points; altitudes alongside. */
+      const buildPoly = (c, pos, edgePoints) => {
+        const poly = [], alt = [];
+        const ns = c.nodes;
+        for (let k = 0; k < ns.length; k++) {
+          const a = ns[k], b = ns[(k + 1) % ns.length];
+          poly.push(pos(a));
+          alt.push(nodes[a].altitude);
+          const ep = edgePoints.get(edgeKey(a, b));
+          if (!ep) continue;
+          const pts = ep.a === a ? ep.points : ep.points.slice().reverse();
+          pts.forEach((p, j) => {
+            const t = (j + 1) / (pts.length + 1);
+            poly.push({ x: p.x, y: p.y });
+            alt.push(nodes[a].altitude * (1 - t) + nodes[b].altitude * t);
+          });
         }
+        return { poly: poly, alt: alt };
+      };
+      const signedArea = (pts) => {
+        let a = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i], q = pts[(i + 1) % pts.length];
+          a += p.x * q.y - q.x * p.y;
+        }
+        return a / 2;
+      };
+      const winding = Math.sign(signedArea(state.cells[0].nodes.map((id) => nodes[id])));
+
+      // Smooth, and check that every cell keeps its orientation and that the cells
+      // still tile the map (no overlap); otherwise retry with a smaller radius.
+      let result, built;
+      for (;;) {
+        result = smoothRuns(radius);
+        const pos = (id) => result.moved.get(id) || { x: nodes[id].x, y: nodes[id].y };
+        built = state.cells.map((c) => buildPoly(c, pos, result.edgePoints));
+        let total = 0, ok = true;
+        for (const b of built) {
+          const a = signedArea(b.poly);
+          if (Math.sign(a) !== winding) { ok = false; break; }
+          total += Math.abs(a);
+        }
+        if (ok && Math.abs(total - ctx.width * ctx.height) < 1) break;
+        radius = radius > 2 ? radius * 0.75 : 0;
       }
+      const { moved, edgePoints, paths, riverPaths } = result;
 
       let maxMove = 0;
       for (const [id, p] of moved) {
@@ -229,34 +279,19 @@
         return r;
       };
 
-      // Rebuild every cell polygon from its (possibly moved) nodes and the
-      // coast points of its edges; polyAlt holds an altitude per polygon point.
+      // Cell polygons follow the smoothed coast and rivers; polyAlt holds an
+      // altitude per polygon point.
       let inserted = 0, recentered = 0;
-      for (const c of state.cells) {
-        const poly = [], alt = [];
-        const ns = c.nodes;
-        for (let k = 0; k < ns.length; k++) {
-          const a = ns[k], b = ns[(k + 1) % ns.length];
-          poly.push({ x: nodes[a].x, y: nodes[a].y });
-          alt.push(nodes[a].altitude);
-          const ep = edgePoints.get(edgeKey(a, b));
-          if (!ep) continue;
-          const pts = ep.a === a ? ep.points : ep.points.slice().reverse();
-          pts.forEach((p, j) => {
-            const t = (j + 1) / (pts.length + 1);
-            poly.push({ x: p.x, y: p.y });
-            alt.push(nodes[a].altitude * (1 - t) + nodes[b].altitude * t);
-          });
-          inserted += pts.length;
-        }
-        c.poly = poly;
-        c.polyAlt = alt;
+      state.cells.forEach((c, ci) => {
+        c.poly = built[ci].poly;
+        c.polyAlt = built[ci].alt;
+        inserted += c.poly.length - c.nodes.length;
         // A small cell squeezed by the coast can lose its center: move it back inside.
-        if (!inside(poly, c.site.x, c.site.y)) {
-          c.site = polygonCentroid(poly);
+        if (!inside(c.poly, c.site.x, c.site.y)) {
+          c.site = polygonCentroid(c.poly);
           recentered++;
         }
-      }
+      });
 
       state.coastEdgePoints = edgePoints;
       state.coastPaths = paths;
@@ -264,7 +299,7 @@
       return moved.size + ' coast nodes moved (max ' + maxMove.toFixed(0) + ' px), ' +
         edgePoints.size + ' coast edges, ' + inserted / 2 + ' coast points' +
         (recentered ? ', ' + recentered + ' cell centers moved' : '') +
-        (radius < s.radius ? '; radius limited to ' + radius.toFixed(0) + ' px for this cell size' : '');
+        (radius < s.radius ? '; radius limited to ' + radius.toFixed(0) + ' px to keep every cell valid' : '');
     },
 
     draw(g, state) {

@@ -192,7 +192,10 @@
         best[start] = 0;
         for (const u of order) {
           if (best[u] < 0) continue;
-          const exits = u === start ? [] : adj[u].filter(endOk);
+          // A border node reached is an end, never a point to go through.
+          if (u !== start && endOk(u)) continue;
+          // Border exits, never onto the coast or another course (D = 0 there).
+          const exits = u === start ? [] : adj[u].filter((b) => endOk(b) && D[b] > 0);
           for (const v of exits.length ? exits : adj[u]) {
             if (!exits.length && !(D[v] > D[u] + 1e-9)) continue;
             if (u === start && firstOk && !firstOk(v)) continue;
@@ -202,7 +205,7 @@
         }
         let end = -1;
         for (let i = 0; i < nodes.length; i++) {
-          if (i === start || best[i] < 0 || !endOk(i)) continue;
+          if (i === start || best[i] < 0 || !endOk(i) || !(D[i] > 0)) continue;
           if (end < 0 || best[i] > best[end] + 1e-9) end = i;
         }
         if (end < 0) return null;
@@ -282,8 +285,8 @@
             const t2 = r ? smoothPolyline(pts, false, r) : pts;
             angle = Math.max(angle, upstreamAngle(f2, f2.length - 1, t2, t2.length - 1));
           }
-          // 2° margin: step 7 splits and smooths the courses slightly differently.
-          if (angle <= 88) found = { path: path, k: k, angle: angle, bank: bank, length: length };
+          // Margin: step 7 splits the courses differently and may lower its radius.
+          if (angle <= 85) found = { path: path, k: k, angle: angle, bank: bank, length: length };
         }
         if (!found) {
           notes.push('river ' + t + ' skipped: no confluence at 90° or less' + (lastBank ? ' on the other bank' : ''));
