@@ -326,43 +326,81 @@
         for (let j = 1; j < axis.length; j++) U.push(U[j - 1] + Math.hypot(axis[j].x - axis[j - 1].x, axis[j].y - axis[j - 1].y));
         const L = U[U.length - 1];
         if (L < lambdaV) return null;
-        // Frame curve (u along the axis, y across), step 4 px.
-        const frame = [];
-        let u = 0, y = 0, phi = rng.random() < 0.5 ? 0 : Math.PI, sArc = 0;
+        // Random variations of λ and ω, one per half wave, drawn up front so the
+        // curve can be rebuilt identically with some half waves made gentler.
+        const phi0 = rng.random() < 0.5 ? 0 : Math.PI;
         const vary = () => 1 + s.meanderIrregularity * (2 * rng.random() - 1);
-        let lambda = lambda0 * vary(), omega = omega0 * vary(), half = Math.floor(phi / Math.PI);
-        while (u < L && frame.length < 20000) {
-          frame.push({ u: u, y: y, s: sArc });
-          const ramp = smoothstep(Math.min(1, sArc / (lambda0 / 2), (L - u) / (lambdaV / 2)));
-          const theta = ramp * omega * Math.sin(phi);
-          u += 4 * Math.cos(theta);
-          y += 4 * Math.sin(theta);
-          sArc += 4;
-          phi += (2 * Math.PI * 4) / lambda;
-          if (Math.floor(phi / Math.PI) !== half) { half = Math.floor(phi / Math.PI); lambda = lambda0 * vary(); omega = omega0 * vary(); }
+        const lamF = [], omF = [];
+        for (let k = 0; k < 400; k++) { lamF.push(vary()); omF.push(vary()); }
+        const build = (red) => {
+          // Frame curve (u along the axis, y across), step 4 px.
+          const frame = [];
+          let u = 0, y = 0, phi = phi0, sArc = 0, k = 0, half = Math.floor(phi / Math.PI);
+          while (u < L && frame.length < 20000) {
+            frame.push({ u: u, y: y, s: sArc, k: k });
+            const ramp = smoothstep(Math.min(1, sArc / (lambda0 / 2), (L - u) / (lambdaV / 2)));
+            const theta = ramp * omega0 * omF[k % 400] * red[k % 400] * Math.sin(phi);
+            u += 4 * Math.cos(theta);
+            y += 4 * Math.sin(theta);
+            sArc += 4;
+            phi += (2 * Math.PI * 4) / (lambda0 * lamF[k % 400]);
+            if (Math.floor(phi / Math.PI) !== half) { half = Math.floor(phi / Math.PI); k++; }
+          }
+          // Remove the slow drift: subtract the running mean of y over a wavelength.
+          const win = Math.max(1, Math.round(lambda0 / 8));
+          const pre = [0];
+          for (const f of frame) pre.push(pre[pre.length - 1] + f.y);
+          const ys = frame.map((f, i) => {
+            const a = Math.max(0, i - win), b = Math.min(frame.length, i + win + 1);
+            return f.y - (pre[b] - pre[a]) / (b - a) * smoothstep(Math.min(1, f.s / (lambda0 / 2)));
+          });
+          // Lay it along the axis.
+          let j = 0;
+          return frame.map((f, i) => {
+            const uu = Math.max(0, Math.min(L, f.u));
+            while (j > 0 && U[j] > uu) j--;
+            while (j + 2 < U.length && U[j + 1] < uu) j++;
+            const t = (uu - U[j]) / ((U[j + 1] - U[j]) || 1);
+            const dx = axis[j + 1].x - axis[j].x, dy = axis[j + 1].y - axis[j].y, l = Math.hypot(dx, dy) || 1;
+            return {
+              x: Math.min(W, Math.max(0, axis[j].x + dx * t - (dy / l) * ys[i])),
+              y: Math.min(H, Math.max(0, axis[j].y + dy * t + (dx / l) * ys[i])),
+              s: f.s, k: f.k
+            };
+          });
+        };
+        // Loops of one course keep `minCourseDistance` apart too: two parts of the
+        // curve more than `gap` apart along it must not come closer than that
+        // (plus a margin for the snapping); the half waves between such a neck
+        // are made gentler and the curve rebuilt.
+        const minD = s.minCourseDistance === undefined ? 80 : s.minCourseDistance;
+        const gap = 3 * minD;
+        const red = new Array(400).fill(1);
+        let ideal = build(red);
+        for (let round = 0; minD > 0 && round < 12; round++) {
+          const cell = minD + 40, buckets = new Map();
+          ideal.forEach((q, i) => {
+            const key = Math.floor(q.x / cell) + ',' + Math.floor(q.y / cell);
+            if (!buckets.has(key)) buckets.set(key, []);
+            buckets.get(key).push(i);
+          });
+          let neck = false;
+          for (let i = 0; i < ideal.length; i += 2) {
+            const q = ideal[i], gx = Math.floor(q.x / cell), gy = Math.floor(q.y / cell);
+            let hit = -1;
+            for (let x = gx - 1; x <= gx + 1 && hit < 0; x++) for (let yy = gy - 1; yy <= gy + 1 && hit < 0; yy++) {
+              for (const j2 of buckets.get(x + ',' + yy) || []) {
+                if (ideal[j2].s - q.s > gap && Math.hypot(ideal[j2].x - q.x, ideal[j2].y - q.y) < cell) { hit = j2; break; }
+              }
+            }
+            if (hit < 0) continue;
+            for (let k = q.k; k <= ideal[hit].k; k++) red[k % 400] *= 0.85;
+            neck = true;
+            i = hit;
+          }
+          if (!neck) break;
+          ideal = build(red);
         }
-        // Remove the slow drift: subtract the running mean of y over a wavelength.
-        const win = Math.max(1, Math.round(lambda0 / 8));
-        const pre = [0];
-        for (const f of frame) pre.push(pre[pre.length - 1] + f.y);
-        const ys = frame.map((f, i) => {
-          const a = Math.max(0, i - win), b = Math.min(frame.length, i + win + 1);
-          return f.y - (pre[b] - pre[a]) / (b - a) * smoothstep(Math.min(1, f.s / (lambda0 / 2)));
-        });
-        // Lay it along the axis.
-        let j = 0;
-        const ideal = frame.map((f, i) => {
-          const uu = Math.max(0, Math.min(L, f.u));
-          while (j > 0 && U[j] > uu) j--;
-          while (j + 2 < U.length && U[j + 1] < uu) j++;
-          const t = (uu - U[j]) / ((U[j + 1] - U[j]) || 1);
-          const dx = axis[j + 1].x - axis[j].x, dy = axis[j + 1].y - axis[j].y, l = Math.hypot(dx, dy) || 1;
-          return {
-            x: Math.min(W, Math.max(0, axis[j].x + dx * t - (dy / l) * ys[i])),
-            y: Math.min(H, Math.max(0, axis[j].y + dy * t + (dx / l) * ys[i])),
-            s: f.s
-          };
-        });
         // Nearest ideal sample of each node in a corridor around the curve.
         const G = 40, grid = new Map();
         ideal.forEach((q, i) => {
@@ -387,6 +425,17 @@
         const blocked = new Set();
         for (const r of state.rivers) for (const v of r.nodes) blocked.add(v);
         const stepOk = awayFrom(state.rivers);
+        // A node must also be `minD` away from the other loops of the curve.
+        const selfOk = (v) => {
+          const nv = nearOf(v), n = nodes[v];
+          const gx = Math.floor(n.x / G), gy = Math.floor(n.y / G), r = Math.ceil(minD / G);
+          for (let x = gx - r; x <= gx + r; x++) for (let yy = gy - r; yy <= gy + r; yy++) {
+            for (const i of grid.get(x + ',' + yy) || []) {
+              if (Math.abs(ideal[i].s - nv.s) > gap && Math.hypot(ideal[i].x - n.x, ideal[i].y - n.y) < minD) return false;
+            }
+          }
+          return true;
+        };
         const corridor = Math.max(60, 1.3 * spacing);
         const sEnd = ideal[ideal.length - 1].s;
         const dist = new Map([[startNode, 0]]), prev = new Map();
@@ -408,6 +457,7 @@
             if (!isEnd && nearBorder(v) && nv.s < sEnd - 200) continue;
             const l = len(uN, v);
             if (stepOk && !stepOk(uN, v)) continue;
+            if (minD > 0 && !isEnd && !selfOk(v)) continue;
             // Steady progress along the curve.
             if (nv.s < nu.s - 40 || nv.s > nu.s + 3 * l + 40) continue;
             const nd = d + l * (1 + Math.pow((nu.d + nv.d) / 2 / 20, 2));
