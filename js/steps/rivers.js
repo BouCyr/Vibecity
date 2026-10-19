@@ -128,9 +128,16 @@
           { value: 'recompute', label: 'Recompute from coast and rivers' }
         ]
       },
-      { key: 'meanders', label: 'Meanders per course', type: 'range', min: 0, max: 10, step: 1, default: 5 },
-      { key: 'meanderTolerance', label: 'Detour slope tolerance (px)', type: 'range', min: 0, max: 60, step: 1, default: 20 },
-      { key: 'meanderCandidates', label: 'Meander candidates', type: 'range', min: 1, max: 10, step: 1, default: 3 },
+      {
+        key: 'meanderStyle', label: 'Meanders', type: 'select', default: 'sine',
+        options: [
+          { value: 'sine', label: 'Sine-generated (wide, regular)' },
+          { value: 'none', label: 'None' }
+        ]
+      },
+      { key: 'meanderWavelength', label: 'Meander wavelength along the valley (px)', type: 'range', min: 150, max: 900, step: 10, default: 450 },
+      { key: 'meanderAngle', label: 'Meander angle (°)', type: 'range', min: 0, max: 120, step: 5, default: 95 },
+      { key: 'meanderIrregularity', label: 'Meander irregularity', type: 'range', min: 0, max: 0.5, step: 0.05, default: 0.15 },
       { key: 'firstConfluence', label: 'First confluence from the mouth (px)', type: 'range', min: 0, max: 800, step: 10, default: 200 },
       { key: 'confluenceGap', label: 'Gap between confluences (px)', type: 'range', min: 0, max: 400, step: 10, default: 100 },
       { key: 'fleuveWidth', label: 'Fleuve width (px)', type: 'range', min: 4, max: 60, step: 1, default: 20 },
@@ -144,6 +151,7 @@
       const W = ctx.width, H = ctx.height;
       const cells = state.cells, nodes = state.nodes;
       state.rivers = [];
+      state.riverIdeals = [];
       state.riverEdges = new Map();
       state.riverPins = new Set();
       for (const n of nodes) n.river = -1;
@@ -257,72 +265,133 @@
       };
 
       /**
-       * Shortest path (px) from a to b for a meander detour: each step may go
-       * flat or slightly down the slope (D drops by `meanderTolerance` px at most),
-       * its inner nodes staying within that tolerance of [D(a), D(b)] and avoiding
-       * `blocked` and the map border (and nodes joined to it). The altitude is
-       * made to decrease downstream afterwards. Returns node ids a → b, or null.
+       * Meanders by a sine-generated curve (Langbein & Leopold): along the bed,
+       * the direction to the valley axis oscillates as ω·sin(2π s / λ).
+       *  1. Valley axis: the course (start → source) heavily smoothed.
+       *  2. Ideal river: the curve built in the axis frame (along, across), with
+       *     λ and ω varied by `meanderIrregularity` at each half wave, its
+       *     amplitude ramping up from 0 over λ/2 after the start (mouth or
+       *     junction) so the course meets the sea or the fleuve squarely; its
+       *     slow drift across the axis is removed; then laid along the axis.
+       *  3. Snapped on the Voronoi edges: shortest path from the start to the
+       *     source where an edge costs its length × (1 + (distance to the ideal
+       *     curve / 20 px)²), only through nodes near the curve whose position
+       *     along it advances steadily (no shortcut across a loop's neck),
+       *     avoiding the other courses, the coast and the map border (nodes
+       *     joined to the border only next to the source).
+       * The slope is restored afterwards by the altitude correction (water made
+       * to flow downstream all along). Returns { path (source → start), ideal }
+       * or null if the curve cannot be followed.
        */
       const nearBorder = (v) => toBorder(v) || adj[v].some(toBorder);
-      const tol = s.meanderTolerance === undefined ? 20 : s.meanderTolerance;
-      const shortestClimb = (a, b, D, blocked) => {
-        const dist = new Map([[a, 0]]), prev = new Map();
+      const spacing = Math.sqrt((W * H) / Math.max(1, cells.length));
+      const sineMeanders = (course, scale, omegaScale) => {
+        const startNode = course[course.length - 1], sourceNode = course[0];
+        const pts = course.slice().reverse().map((v) => ({ x: nodes[v].x, y: nodes[v].y }));
+        const omega0 = (s.meanderAngle * omegaScale * Math.PI) / 180;
+        // The setting is the wavelength along the valley; along the bed it is
+        // longer by 1 / J0(ω) (mean of cos θ over a wave).
+        let j0 = 0;
+        for (let k = 0; k < 64; k++) j0 += Math.cos(omega0 * Math.sin((2 * Math.PI * (k + 0.5)) / 64)) / 64;
+        const lambdaV = s.meanderWavelength * scale;
+        const lambda0 = lambdaV / Math.max(0.2, j0);
+        const axis = smoothPolyline(pts, false, Math.max(150, 0.4 * s.meanderWavelength * scale));
+        const U = [0];
+        for (let j = 1; j < axis.length; j++) U.push(U[j - 1] + Math.hypot(axis[j].x - axis[j - 1].x, axis[j].y - axis[j - 1].y));
+        const L = U[U.length - 1];
+        if (L < lambdaV) return null;
+        // Frame curve (u along the axis, y across), step 4 px.
+        const frame = [];
+        let u = 0, y = 0, phi = rng.random() < 0.5 ? 0 : Math.PI, sArc = 0;
+        const vary = () => 1 + s.meanderIrregularity * (2 * rng.random() - 1);
+        let lambda = lambda0 * vary(), omega = omega0 * vary(), half = Math.floor(phi / Math.PI);
+        while (u < L && frame.length < 20000) {
+          frame.push({ u: u, y: y, s: sArc });
+          const ramp = smoothstep(Math.min(1, sArc / (lambda0 / 2), (L - u) / (lambdaV / 2)));
+          const theta = ramp * omega * Math.sin(phi);
+          u += 4 * Math.cos(theta);
+          y += 4 * Math.sin(theta);
+          sArc += 4;
+          phi += (2 * Math.PI * 4) / lambda;
+          if (Math.floor(phi / Math.PI) !== half) { half = Math.floor(phi / Math.PI); lambda = lambda0 * vary(); omega = omega0 * vary(); }
+        }
+        // Remove the slow drift: subtract the running mean of y over a wavelength.
+        const win = Math.max(1, Math.round(lambda0 / 8));
+        const pre = [0];
+        for (const f of frame) pre.push(pre[pre.length - 1] + f.y);
+        const ys = frame.map((f, i) => {
+          const a = Math.max(0, i - win), b = Math.min(frame.length, i + win + 1);
+          return f.y - (pre[b] - pre[a]) / (b - a) * smoothstep(Math.min(1, f.s / (lambda0 / 2)));
+        });
+        // Lay it along the axis.
+        let j = 0;
+        const ideal = frame.map((f, i) => {
+          const uu = Math.max(0, Math.min(L, f.u));
+          while (j > 0 && U[j] > uu) j--;
+          while (j + 2 < U.length && U[j + 1] < uu) j++;
+          const t = (uu - U[j]) / ((U[j + 1] - U[j]) || 1);
+          const dx = axis[j + 1].x - axis[j].x, dy = axis[j + 1].y - axis[j].y, l = Math.hypot(dx, dy) || 1;
+          return {
+            x: Math.min(W, Math.max(0, axis[j].x + dx * t - (dy / l) * ys[i])),
+            y: Math.min(H, Math.max(0, axis[j].y + dy * t + (dx / l) * ys[i])),
+            s: f.s
+          };
+        });
+        // Nearest ideal sample of each node in a corridor around the curve.
+        const G = 40, grid = new Map();
+        ideal.forEach((q, i) => {
+          const k = Math.floor(q.x / G) + ',' + Math.floor(q.y / G);
+          if (!grid.has(k)) grid.set(k, []);
+          grid.get(k).push(i);
+        });
+        const near = new Map();
+        const nearOf = (v) => {
+          if (near.has(v)) return near.get(v);
+          const n = nodes[v], gx = Math.floor(n.x / G), gy = Math.floor(n.y / G);
+          let best = null;
+          for (let x = gx - 3; x <= gx + 3; x++) for (let yy = gy - 3; yy <= gy + 3; yy++) {
+            for (const i of grid.get(x + ',' + yy) || []) {
+              const d = Math.hypot(ideal[i].x - n.x, ideal[i].y - n.y);
+              if (!best || d < best.d) best = { d: d, s: ideal[i].s };
+            }
+          }
+          near.set(v, best);
+          return best;
+        };
+        const blocked = new Set();
+        for (const r of state.rivers) for (const v of r.nodes) blocked.add(v);
+        const corridor = Math.max(60, 1.3 * spacing);
+        const sEnd = ideal[ideal.length - 1].s;
+        const dist = new Map([[startNode, 0]]), prev = new Map();
+        let end = -1;
         const heap = new Heap();
-        heap.push(0, a);
+        heap.push(0, startNode);
         while (heap.a.length) {
-          const [d, u] = heap.pop();
-          if (d > dist.get(u)) continue;
-          if (u === b) break;
-          for (const v of adj[u]) {
-            if (!(D[v] >= D[u] - tol)) continue;
-            if (v !== b && (!(D[v] >= D[a] - tol && D[v] <= D[b] + tol) || blocked.has(v) || nearBorder(v))) continue;
-            const nd = d + len(u, v);
-            if (!dist.has(v) || nd < dist.get(v) - 1e-9) { dist.set(v, nd); prev.set(v, u); heap.push(nd, v); }
+          const [d, uN] = heap.pop();
+          if (d > dist.get(uN)) continue;
+          if (uN === sourceNode || (toBorder(uN) && uN !== startNode)) { end = uN; break; }
+          const nu = nearOf(uN) || { d: 0, s: 0 };
+          for (const v of adj[uN]) {
+            const nv = nearOf(v);
+            // The course ends on the map border, next to the end of the curve.
+            const isEnd = v === sourceNode || (toBorder(v) && nv && nv.s > sEnd - 300 && nv.d <= corridor);
+            if (!isEnd && (blocked.has(v) || toBorder(v) || nodes[v].coast)) continue;
+            if (!nv || (!isEnd && nv.d > corridor)) continue;
+            // Along the map border only at the very end, next to the source.
+            if (!isEnd && nearBorder(v) && nv.s < sEnd - 200) continue;
+            const l = len(uN, v);
+            // Steady progress along the curve.
+            if (nv.s < nu.s - 40 || nv.s > nu.s + 3 * l + 40) continue;
+            const nd = d + l * (1 + Math.pow((nu.d + nv.d) / 2 / 20, 2));
+            if (!dist.has(v) || nd < dist.get(v) - 1e-9) { dist.set(v, nd); prev.set(v, uN); heap.push(nd, v); }
           }
         }
-        if (!dist.has(b)) return null;
-        const out = [b];
-        while (out[out.length - 1] !== a) out.push(prev.get(out[out.length - 1]));
-        return out.reverse();
+        if (end < 0) return null;
+        const path = [end];
+        while (path[path.length - 1] !== startNode) path.push(prev.get(path[path.length - 1]));
+        return { path: path, ideal: ideal };
       };
-
-      /**
-       * Meanders: on a course (node ids source → start, as the climbs return
-       * them), up to `meanders` times: draw `meanderCandidates` nodes at random
-       * more than 5 edges and 150 px (along the course) after the reference
-       * (first the start: mouth or junction), keep the one nearest to the start,
-       * and replace the stretch from 4 edges before it to 4 edges after it by the
-       * shortest climbing path that goes round it (then 3, then 2 edges).
-       * The next draw starts at the upstream end of the detour (or at the point
-       * if there was no detour). `ok(path)` can refuse a detour.
-       */
-      const addMeanders = (course, D, ok) => {
-        let p = course.slice().reverse(); // start → source
-        let ref = 0, made = 0;
-        for (let m = 0; m < s.meanders; m++) {
-          const arc = [0];
-          for (let i = 1; i < p.length; i++) arc.push(arc[i - 1] + len(p[i - 1], p[i]));
-          const cands = [];
-          for (let i = ref + 6; i + 3 < p.length; i++) if (arc[i] - arc[ref] > 150) cands.push(i);
-          if (!cands.length) break;
-          let i = Infinity;
-          for (let c = 0; c < s.meanderCandidates && cands.length; c++) i = Math.min(i, cands.splice(rng.int(0, cands.length - 1), 1)[0]);
-          const blocked = new Set(p);
-          for (const r of state.rivers) for (const v of r.nodes) blocked.add(v);
-          let next = null;
-          for (const g of [4, 3, 2]) {
-            if (i + g >= p.length) continue;
-            const detour = shortestClimb(p[i - g], p[i + g], D, blocked);
-            if (!detour) continue;
-            const np = p.slice(0, i - g).concat(detour, p.slice(i + g + 1));
-            if (ok && !ok(np.slice().reverse())) continue;
-            next = { p: np, ref: i - g + detour.length - 1 };
-            break;
-          }
-          if (next) { p = next.p; ref = next.ref; made++; } else ref = i;
-        }
-        return { path: p.reverse(), made: made };
-      };
+      const ideals = [];
 
       // Fleuve: mouth = coast node nearest to the map center; if no course climbs
       // from it to a map edge, the next coast nodes by distance to the center.
@@ -335,8 +404,11 @@
         if (fPath) { mouth = m; break; }
       }
       if (!fPath) return 'no watercourse (no land path from the coast to a map edge)';
-      const fMeanders = addMeanders(fPath, Dcoast, null);
-      fPath = fMeanders.path;
+      let fMeandered = false;
+      if (s.meanderStyle === 'sine') {
+        const m = sineMeanders(fPath, 1, 1);
+        if (m) { fPath = m.path; ideals.push(m.ideal); fMeandered = true; }
+      }
       const fleuveSide = sideOf(nodes[fPath[0]], W, H);
       state.rivers.push({ kind: 'fleuve', side: fleuveSide, nodes: fPath, joins: null, mouth: mouth });
 
@@ -375,7 +447,7 @@
         return angle <= MAX_CONFLUENCE_ANGLE - 5 && narrowest >= MIN_CONFLUENCE_ANGLE + 5 ? angle : null;
       };
       const notes = [];
-      if (fMeanders.made) notes.push('fleuve: ' + fMeanders.made + ' meander(s)');
+      if (s.meanderStyle === 'sine' && !fMeandered) notes.push('fleuve: meanders not possible');
       const junctionArcs = [];
       let lastBank = 0;
       for (let t = 1; t < count; t++) {
@@ -400,16 +472,28 @@
           notes.push('river ' + t + ' skipped: no confluence between ' + MIN_CONFLUENCE_ANGLE + '° and ' + MAX_CONFLUENCE_ANGLE + '°' + (lastBank ? ' on the other bank' : ''));
           break;
         }
-        // Meanders, as long as the confluence stays within the angle limits.
-        const tm = addMeanders(found.path, D, (path) => confluenceAngle(found.k, path.map((v) => nodes[v])) !== null);
-        found.path = tm.path;
+        // Meanders (smaller for a tributary), as long as the confluence stays
+        // within the angle limits: otherwise gentler, then none.
+        let meandered = false;
+        if (s.meanderStyle === 'sine') {
+          for (const om of [1, 0.7, 0.4]) {
+            const m = sineMeanders(found.path, 0.6, om);
+            if (!m) continue;
+            const angle = confluenceAngle(found.k, m.path.map((v) => nodes[v]));
+            if (angle === null) continue;
+            found.path = m.path;
+            found.angle = angle;
+            ideals.push(m.ideal);
+            meandered = true;
+            break;
+          }
+        }
         found.length = pathLength(found.path);
-        found.angle = confluenceAngle(found.k, found.path.map((v) => nodes[v]));
         const join = found.path[found.path.length - 1];
         state.rivers.push({ kind: 'river', side: sideOf(nodes[found.path[0]], W, H), nodes: found.path, joins: 0, mouth: join });
         notes.push('river from ' + state.rivers[state.rivers.length - 1].side + ', ' + Math.round(found.length) + ' px, joins ' +
           Math.round(fromMouth[found.k]) + ' px upstream of the mouth, ' + (found.bank > 0 ? 'right' : 'left') + ' bank, ' +
-          Math.round(found.angle) + '°' + (tm.made ? ', ' + tm.made + ' meander(s)' : ''));
+          Math.round(found.angle) + '°' + (s.meanderStyle === 'sine' && !meandered ? ', no meanders' : ''));
         junctionArcs.push(fromMouth[found.k]);
         lastBank = found.bank;
       }
@@ -499,6 +583,7 @@
         monotonic();
       }
 
+      state.riverIdeals = ideals;
       const f = state.rivers[0];
       return 'fleuve from ' + f.side + ', ' + f.nodes.length + ' nodes' + (tried > 1 ? ' (mouth #' + tried + ' by distance to the center)' : '') + (notes.length ? '; ' + notes.join('; ') : '') +
         '; altitude: ' + (carve ? 'carved' : 'recomputed');
@@ -514,6 +599,17 @@
       }));
       g.lineCap = 'round';
       g.lineJoin = 'round';
+      // The ideal meandering curves the courses were snapped to, dashed.
+      g.save();
+      g.setLineDash([6, 6]);
+      g.strokeStyle = 'rgba(47, 63, 82, 0.6)';
+      g.lineWidth = 1.5;
+      for (const ideal of state.riverIdeals || []) {
+        g.beginPath();
+        ideal.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+        g.stroke();
+      }
+      g.restore();
       // Dark banks first, then water on top, so courses merge cleanly at confluences.
       for (const pass of [0, 1]) {
         g.strokeStyle = pass ? '#5f86a8' : '#2f3f52';
