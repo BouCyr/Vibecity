@@ -472,12 +472,12 @@
           notes.push('river ' + t + ' skipped: no confluence between ' + MIN_CONFLUENCE_ANGLE + '° and ' + MAX_CONFLUENCE_ANGLE + '°' + (lastBank ? ' on the other bank' : ''));
           break;
         }
-        // Meanders (smaller for a tributary), as long as the confluence stays
+        // Meanders, as long as the confluence stays
         // within the angle limits: otherwise gentler, then none.
         let meandered = false;
         if (s.meanderStyle === 'sine') {
           for (const om of [1, 0.7, 0.4]) {
-            const m = sineMeanders(found.path, 0.6, om);
+            const m = sineMeanders(found.path, 1, om);
             if (!m) continue;
             const angle = confluenceAngle(found.k, m.path.map((v) => nodes[v]));
             if (angle === null) continue;
