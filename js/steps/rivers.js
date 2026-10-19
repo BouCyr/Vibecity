@@ -117,8 +117,9 @@
       },
       { key: 'firstConfluence', label: 'First confluence from the mouth (px)', type: 'range', min: 0, max: 600, step: 10, default: 100 },
       { key: 'confluenceGap', label: 'Gap between confluences (px)', type: 'range', min: 0, max: 400, step: 10, default: 50 },
-      { key: 'fleuveWidth', label: 'Fleuve width (px)', type: 'range', min: 4, max: 80, step: 1, default: 32 },
-      { key: 'riverWidth', label: 'River width (px)', type: 'range', min: 2, max: 40, step: 1, default: 16 },
+      { key: 'fleuveWidth', label: 'Fleuve width (px)', type: 'range', min: 4, max: 60, step: 1, default: 20 },
+      { key: 'riverWidth', label: 'River width (px)', type: 'range', min: 2, max: 40, step: 1, default: 15 },
+      { key: 'junctionWidthGain', label: 'Fleuve widening per confluence (px)', type: 'range', min: 0, max: 15, step: 1, default: 3 },
       { key: 'valleyWidth', label: 'Valley width (carve, px)', type: 'range', min: 20, max: 600, step: 10, default: 200 },
       { key: 'reliefKept', label: 'Relief kept (recompute)', type: 'range', min: 0, max: 1, step: 0.05, default: 0.35 }
     ],
@@ -312,8 +313,16 @@
       // Widths, flags, pinned nodes.
       state.rivers.forEach((r, ri) => {
         const n = r.nodes.length;
-        const base = r.kind === 'fleuve' ? s.fleuveWidth : s.riverWidth;
-        r.widths = r.nodes.map((v, k) => base * ((r.kind === 'fleuve' ? 0.6 : 0.7) + (r.kind === 'fleuve' ? 0.4 : 0.3) * (k / Math.max(1, n - 1))));
+        // Constant width per edge: rivers `riverWidth`; the fleuve `fleuveWidth`,
+        // plus `junctionWidthGain` downstream of each confluence.
+        if (r.kind === 'fleuve') {
+          const joins = state.rivers.filter((t) => t.kind === 'river').map((t) => r.nodes.indexOf(t.mouth));
+          r.edgeWidths = r.nodes.slice(0, -1).map((v, k) => s.fleuveWidth + s.junctionWidthGain * joins.filter((j) => j >= 0 && j <= k).length);
+        } else {
+          r.edgeWidths = r.nodes.slice(0, -1).map(() => s.riverWidth);
+        }
+        // Per node: the width of the edge leaving it downstream (last node: last edge).
+        r.widths = r.nodes.map((v, k) => r.edgeWidths[Math.min(k, n - 2)]);
         r.nodes.forEach((v) => { if (nodes[v].river < 0) nodes[v].river = ri; });
         for (let k = 0; k + 1 < n; k++) {
           const key = edgeKey(r.nodes[k], r.nodes[k + 1]);
@@ -383,8 +392,10 @@
         '; altitude: ' + (carve ? 'carved' : 'recomputed');
     },
 
-    draw(g, state) {
+    draw(g, state, ctx) {
       if (!state.rivers || !state.rivers.length) return;
+      // Once step 9 has built the water cells (and is shown), it draws the rivers.
+      if (state.riverCellsBuilt && ctx && ctx.visible && ctx.visible.riverCells) return;
       const paths = state.riverPaths || state.rivers.map((r) => ({
         points: r.nodes.map((v) => state.nodes[v]),
         widths: r.widths
