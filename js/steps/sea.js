@@ -1,23 +1,108 @@
-// Step 4 — sea. Altitude is lowered near the chosen sea fronts (map edges), then
-// the lowest cells become sea. A clean-up pass is left to the next step.
+// Step 4 — sea. Altitude is lowered near a reference coast curve built from the
+// chosen sea fronts, then the lowest cells become sea. A clean-up pass follows.
 (function (global) {
   'use strict';
 
   const smoothstep = (t) => t * t * (3 - 2 * t);
+  const SIDES = ['N', 'E', 'S', 'W'];
+  const OPPOSITE = { N: 'S', S: 'N', E: 'W', W: 'E' };
+  const CURVE_SEGMENTS = 256;
 
   /**
-   * Normalized distance to the nearest sea front (0 on the edge, 1 at `reach`),
-   * combined with a soft minimum: (sum d_i^-p)^(-1/p). A hard minimum would give
-   * a sharp diagonal crease where two fronts meet; the soft one rounds the corner.
+   * Reference coast for the selected fronts, as guides: each guide has a
+   * `line` (polyline of the coast curve) and `land` (closed polygon of the land
+   * side, or null when the whole map is on the land side).
+   *  - one front, or two opposite fronts: the front edges themselves;
+   *  - two adjacent fronts: a parabola from the far end of one front to the far
+   *    end of the other, bending toward (but avoiding) their shared corner;
+   *  - three fronts: a parabola from the two corners of the land edge, with its
+   *    vertex at the middle of the opposite edge;
+   *  - four fronts: a circle centered on the map, touching the edge middles.
    */
-  function seaDistance(x, y, fronts, w, h, reach, p) {
-    let sum = 0;
-    for (const f of fronts) {
-      const d = (f === 'N' ? y : f === 'S' ? h - y : f === 'W' ? x : w - x) / reach;
-      if (d <= 1e-6) return 0;
-      sum += Math.pow(d, -p);
+  function coastGuides(fronts, w, h) {
+    const P = {
+      NW: { x: 0, y: 0 }, NE: { x: w, y: 0 }, SE: { x: w, y: h }, SW: { x: 0, y: h }
+    };
+    const corner = (a, b) => P[(a === 'N' || a === 'S') ? a + b : b + a];
+    const mid = { N: { x: w / 2, y: 0 }, S: { x: w / 2, y: h }, W: { x: 0, y: h / 2 }, E: { x: w, y: h / 2 } };
+    const sorted = SIDES.filter((f) => fronts.indexOf(f) >= 0);
+
+    function bezier(p0, c, p2) {
+      const pts = [];
+      for (let i = 0; i <= CURVE_SEGMENTS; i++) {
+        const t = i / CURVE_SEGMENTS, u = 1 - t;
+        pts.push({ x: u * u * p0.x + 2 * u * t * c.x + t * t * p2.x, y: u * u * p0.y + 2 * u * t * c.y + t * t * p2.y });
+      }
+      return pts;
     }
-    return sum > 0 ? Math.pow(sum, -1 / p) : Infinity;
+    const edge = (f) => {
+      const ends = f === 'N' ? [P.NW, P.NE] : f === 'S' ? [P.SW, P.SE] : f === 'W' ? [P.NW, P.SW] : [P.NE, P.SE];
+      return { line: ends, land: null };
+    };
+
+    if (sorted.length === 4) {
+      const pts = [];
+      const r = Math.min(w, h) / 2;
+      for (let i = 0; i <= CURVE_SEGMENTS; i++) {
+        const a = (i / CURVE_SEGMENTS) * Math.PI * 2;
+        pts.push({ x: w / 2 + r * Math.cos(a), y: h / 2 + r * Math.sin(a) });
+      }
+      return [{ line: pts, land: pts }];
+    }
+    if (sorted.length === 3) {
+      const m = SIDES.find((f) => sorted.indexOf(f) < 0);
+      const central = OPPOSITE[m];
+      const others = sorted.filter((f) => f !== central);
+      const p0 = corner(m, others[0]), p2 = corner(m, others[1]);
+      // Control point mirrored so that the vertex (t = 0.5) is the middle of the central edge.
+      const c = { x: 2 * mid[central].x - mid[m].x, y: 2 * mid[central].y - mid[m].y };
+      const pts = bezier(p0, c, p2);
+      return [{ line: pts, land: pts }];
+    }
+    if (sorted.length === 2 && OPPOSITE[sorted[0]] !== sorted[1]) {
+      const [a, b] = sorted;
+      const shared = corner(a, b);
+      const p0 = corner(a, OPPOSITE[b]), p2 = corner(b, OPPOSITE[a]);
+      const pts = bezier(p0, shared, p2);
+      const far = corner(OPPOSITE[a], OPPOSITE[b]);
+      return [{ line: pts, land: pts.concat([far]) }];
+    }
+    return sorted.map(edge);
+  }
+
+  function distToPolyline(x, y, pts) {
+    let best = Infinity;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const l2 = dx * dx + dy * dy;
+      let t = l2 > 0 ? ((x - a.x) * dx + (y - a.y) * dy) / l2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const ex = a.x + t * dx - x, ey = a.y + t * dy - y;
+      const d = ex * ex + ey * ey;
+      if (d < best) best = d;
+    }
+    return Math.sqrt(best);
+  }
+
+  function insidePolygon(x, y, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+  }
+
+  /** Signed distance to the reference coast: positive on land, negative at sea. */
+  function coastDistance(x, y, guides) {
+    let best = Infinity;
+    for (const g of guides) {
+      let d = distToPolyline(x, y, g.line);
+      if (g.land && !insidePolygon(x, y, g.land)) d = -d;
+      if (d < best) best = d;
+    }
+    return best;
   }
 
   /** Map key for the edge between two nodes, independent of direction. */
@@ -70,20 +155,22 @@
       },
       { key: 'percent', label: 'Sea cells (%)', type: 'range', min: 0, max: 90, step: 1, default: 25 },
       { key: 'reach', label: 'Coast reach (% of map)', type: 'range', min: 5, max: 100, step: 1, default: 40 },
-      { key: 'strength', label: 'Altitude lowering', type: 'range', min: 0, max: 2, step: 0.05, default: 1 },
-      { key: 'rounding', label: 'Corner rounding', type: 'range', min: 1, max: 8, step: 0.5, default: 2 }
+      { key: 'strength', label: 'Altitude lowering', type: 'range', min: 0, max: 2, step: 0.05, default: 1 }
     ],
 
     run(state, s, rng, ctx) {
       const fronts = s.fronts || [];
       const reach = Math.max(1, (s.reach / 100) * Math.min(ctx.width, ctx.height));
-      // Exponent of the soft minimum: 1 = very round corners, 8 = nearly square.
-      const p = 8 / s.rounding;
+      const guides = coastGuides(fronts, ctx.width, ctx.height);
+      state.coastGuides = guides;
 
-      // Lower the altitude of every cell center and node according to its sea distance.
+      // Lower the altitude according to the signed distance to the reference coast:
+      // fading out over `reach` on the land side, full (and more) on the sea side.
       const lowering = (x, y) => {
-        const d = seaDistance(x, y, fronts, ctx.width, ctx.height, reach, p);
-        return d >= 1 ? 0 : s.strength * (1 - smoothstep(d));
+        const d = coastDistance(x, y, guides) / reach;
+        if (d >= 1) return 0;
+        if (d <= 0) return s.strength * (1 + Math.min(1, -d));
+        return s.strength * (1 - smoothstep(d));
       };
       if (fronts.length) {
         for (const c of state.cells) c.altitude -= lowering(c.site.x, c.site.y);
@@ -135,6 +222,18 @@
         g.lineTo(state.nodes[b].x, state.nodes[b].y);
       }
       g.stroke();
+
+      // Reference coast curve.
+      g.save();
+      g.strokeStyle = 'rgba(29, 62, 122, .7)';
+      g.lineWidth = 5;
+      g.setLineDash([16, 12]);
+      for (const guide of state.coastGuides) {
+        g.beginPath();
+        guide.line.forEach((pt, i) => (i ? g.lineTo(pt.x, pt.y) : g.moveTo(pt.x, pt.y)));
+        g.stroke();
+      }
+      g.restore();
     }
   };
 })(window);
