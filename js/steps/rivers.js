@@ -62,6 +62,10 @@
   // Smoothing radii (px) under which a confluence angle must stay <= 90°: step 7
   // smooths the courses afterwards, which can open a confluence by a few degrees.
   const CONFLUENCE_CHECK_RADII = [0, 10, 15, 20, 25, 30];
+  // Minimum confluence angle (degrees), checked at these distances (px) from the
+  // junction too, so that a branch cannot run alongside the other before joining.
+  const MIN_CONFLUENCE_ANGLE = 25;
+  const MIN_ANGLE_SCALES = [40, 80, CONFLUENCE_SCALE];
 
   /**
    * First point upstream of index `end` that is `len` px away from pts[end] as
@@ -84,9 +88,9 @@
   }
 
   /** Angle (degrees) at pts1[end1] between the two upstream branches. */
-  function upstreamAngle(pts1, end1, pts2, end2) {
+  function upstreamAngle(pts1, end1, pts2, end2, scale) {
     const c = pts1[end1];
-    const a = pointUpstream(pts1, end1, CONFLUENCE_SCALE), b = pointUpstream(pts2, end2, CONFLUENCE_SCALE);
+    const a = pointUpstream(pts1, end1, scale || CONFLUENCE_SCALE), b = pointUpstream(pts2, end2, scale || CONFLUENCE_SCALE);
     const ax = a.x - c.x, ay = a.y - c.y, bx = b.x - c.x, by = b.y - c.y;
     const cos = (ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by) || 1);
     return (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
@@ -297,18 +301,20 @@
           const pts = path.map((v) => nodes[v]);
           const bank = bankAt(k, pointUpstream(pts, pts.length - 1, CONFLUENCE_SCALE));
           if (lastBank && bank !== -lastBank) continue;
-          // Worst angle over the smoothing radii step 7 may use (junction kept in place).
-          let angle = 0;
+          // Worst angles over the smoothing radii step 7 may use (junction kept in
+          // place): the widest at 120 px, the narrowest at 40, 80 and 120 px.
+          let angle = 0, narrowest = 180;
           for (const r of CONFLUENCE_CHECK_RADII) {
             const f2 = r ? smoothPolyline(fPts.slice(0, k + 1), false, r) : fPts.slice(0, k + 1);
             const t2 = r ? smoothPolyline(pts, false, r) : pts;
             angle = Math.max(angle, upstreamAngle(f2, f2.length - 1, t2, t2.length - 1));
+            for (const sc of MIN_ANGLE_SCALES) narrowest = Math.min(narrowest, upstreamAngle(f2, f2.length - 1, t2, t2.length - 1, sc));
           }
-          // Margin: step 7 splits the courses differently and may lower its radius.
-          if (angle <= 85) found = { path: path, k: k, angle: angle, bank: bank, length: length };
+          // Margins: step 7 splits the courses differently and may lower its radius.
+          if (angle <= 85 && narrowest >= MIN_CONFLUENCE_ANGLE + 5) found = { path: path, k: k, angle: angle, bank: bank, length: length };
         }
         if (!found) {
-          notes.push('river ' + t + ' skipped: no confluence at 90° or less' + (lastBank ? ' on the other bank' : ''));
+          notes.push('river ' + t + ' skipped: no confluence between ' + MIN_CONFLUENCE_ANGLE + '° and 90°' + (lastBank ? ' on the other bank' : ''));
           break;
         }
         const join = found.path[found.path.length - 1];
