@@ -1,0 +1,218 @@
+// App shell: builds the step panel, runs the generation pipeline, draws the map.
+(function () {
+  'use strict';
+
+  const MAP_W = 2000, MAP_H = 2000;
+
+  // Ordered generation pipeline. Each step:
+  //   id, title, settings[]                       — UI description
+  //   run(state, settings, rng, ctx) -> string?   — mutates shared state, returns info text
+  //   draw(g, state, ctx)                         — renders its layer in map coordinates
+  const STEPS = [
+    window.PointsStep
+  ];
+
+  const els = {
+    panel: document.getElementById('panel'),
+    toggle: document.getElementById('panel-toggle'),
+    seed: document.getElementById('seed'),
+    seedRandom: document.getElementById('seed-random'),
+    steps: document.getElementById('steps'),
+    status: document.getElementById('status'),
+    stage: document.getElementById('stage'),
+    canvas: document.getElementById('map')
+  };
+
+  // ---------- Config (seed + per-step settings), persisted in the URL hash ----------
+
+  const config = { seed: '', steps: {} };
+  for (const step of STEPS) {
+    config.steps[step.id] = {};
+    for (const s of step.settings) config.steps[step.id][s.key] = s.default;
+  }
+
+  function loadFromHash() {
+    if (!location.hash) return false;
+    try {
+      const saved = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+      if (typeof saved.seed === 'string') config.seed = saved.seed;
+      for (const step of STEPS) {
+        const src = saved.steps && saved.steps[step.id];
+        if (!src) continue;
+        for (const s of step.settings) {
+          if (src[s.key] !== undefined) config.steps[step.id][s.key] = src[s.key];
+        }
+      }
+      return !!config.seed;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function saveToHash() {
+    history.replaceState(null, '', '#' + encodeURIComponent(JSON.stringify(config)));
+  }
+
+  // ---------- Panel UI ----------
+
+  const infoEls = {};
+
+  function buildSetting(step, s) {
+    const wrap = document.createElement('div');
+    wrap.className = 'setting';
+    const id = 'set-' + step.id + '-' + s.key;
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    label.textContent = s.label;
+    wrap.appendChild(label);
+
+    const values = config.steps[step.id];
+    let input;
+
+    if (s.type === 'select') {
+      input = document.createElement('select');
+      for (const o of s.options) {
+        const opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        input.appendChild(opt);
+      }
+      input.value = values[s.key];
+      input.addEventListener('change', () => { values[s.key] = input.value; changed(); });
+    } else if (s.type === 'range') {
+      const out = document.createElement('output');
+      out.textContent = values[s.key];
+      label.appendChild(out);
+      input = document.createElement('input');
+      input.type = 'range';
+      input.min = s.min; input.max = s.max; input.step = s.step || 1;
+      input.value = values[s.key];
+      input.addEventListener('input', () => {
+        values[s.key] = Number(input.value);
+        out.textContent = input.value;
+        changed();
+      });
+    } else {
+      input = document.createElement('input');
+      input.type = 'number';
+      if (s.min !== undefined) input.min = s.min;
+      if (s.max !== undefined) input.max = s.max;
+      if (s.step !== undefined) input.step = s.step;
+      input.value = values[s.key];
+      input.addEventListener('change', () => { values[s.key] = Number(input.value); changed(); });
+    }
+    input.id = id;
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function buildPanel() {
+    els.steps.innerHTML = '';
+    STEPS.forEach((step, i) => {
+      const li = document.createElement('li');
+      li.className = 'step';
+
+      const head = document.createElement('div');
+      head.className = 'step-head';
+      head.innerHTML =
+        '<span class="step-num">' + (i + 1) + '</span>' +
+        '<span class="step-title"></span>' +
+        '<span class="step-caret">&#9662;</span>';
+      head.querySelector('.step-title').textContent = step.title;
+      head.addEventListener('click', () => li.classList.toggle('closed'));
+      li.appendChild(head);
+
+      const body = document.createElement('div');
+      body.className = 'step-settings';
+      for (const s of step.settings) body.appendChild(buildSetting(step, s));
+      const info = document.createElement('div');
+      info.className = 'step-info';
+      body.appendChild(info);
+      infoEls[step.id] = info;
+      li.appendChild(body);
+
+      els.steps.appendChild(li);
+    });
+  }
+
+  els.toggle.addEventListener('click', () => {
+    const collapsed = els.panel.classList.toggle('collapsed');
+    els.toggle.innerHTML = collapsed ? '&raquo;' : '&laquo;';
+    els.toggle.title = collapsed ? 'Expand panel' : 'Collapse panel';
+    // The stage size changes once the transition ends.
+    setTimeout(resize, 220);
+  });
+
+  els.seed.addEventListener('input', () => { config.seed = els.seed.value; changed(); });
+  els.seedRandom.addEventListener('click', () => {
+    config.seed = randomSeed();
+    els.seed.value = config.seed;
+    changed();
+  });
+
+  // ---------- Generation ----------
+
+  let state = null;
+  const ctx = { width: MAP_W, height: MAP_H };
+
+  function generate() {
+    const t0 = performance.now();
+    state = {};
+    for (const step of STEPS) {
+      // Each step gets its own generator derived from the seed and its id,
+      // so tweaking one step never reshuffles the randomness of another.
+      const rng = new Rng(config.seed + '|' + step.id);
+      const info = step.run(state, config.steps[step.id], rng, ctx);
+      infoEls[step.id].textContent = info || '';
+    }
+    els.status.textContent = 'Generated in ' + Math.round(performance.now() - t0) + ' ms';
+  }
+
+  let pending = false;
+  function changed() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      saveToHash();
+      generate();
+      draw();
+    });
+  }
+
+  // ---------- Rendering ----------
+
+  function resize() {
+    const r = els.stage.getBoundingClientRect();
+    const pad = 24;
+    const size = Math.max(50, Math.floor(Math.min(r.width - pad, r.height - pad)));
+    const dpr = window.devicePixelRatio || 1;
+    els.canvas.style.width = size + 'px';
+    els.canvas.style.height = size + 'px';
+    els.canvas.width = Math.round(size * dpr);
+    els.canvas.height = Math.round(size * dpr);
+    draw();
+  }
+
+  function draw() {
+    if (!state) return;
+    const g = els.canvas.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, els.canvas.width, els.canvas.height);
+    g.setTransform(els.canvas.width / MAP_W, 0, 0, els.canvas.height / MAP_H, 0, 0);
+    g.fillStyle = '#efe4c8';
+    g.fillRect(0, 0, MAP_W, MAP_H);
+    for (const step of STEPS) step.draw(g, state, ctx);
+  }
+
+  window.addEventListener('resize', resize);
+
+  // ---------- Boot ----------
+
+  if (!loadFromHash()) config.seed = randomSeed();
+  els.seed.value = config.seed;
+  buildPanel();
+  saveToHash();
+  generate();
+  resize();
+})();
