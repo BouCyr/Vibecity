@@ -185,7 +185,9 @@
       /**
        * Longest path (px) from `start` along which D strictly increases, ending on
        * a node accepted by `endOk`; `firstOk(v)` filters the first step. Dynamic
-       * programming over the nodes sorted by D. Returns node ids end → start.
+       * programming over the nodes sorted by D. A node (other than the start)
+       * with an edge to an `endOk` node is terminal: the course takes that edge
+       * and ends, even if a longer path exists. Returns node ids end → start.
        */
       const longestClimb = (start, D, endOk, firstOk) => {
         const order = all.filter((i) => isFinite(D[i]) && D[i] >= D[start]).sort((a, b) => D[a] - D[b] || a - b);
@@ -194,15 +196,16 @@
         best[start] = 0;
         for (const u of order) {
           if (best[u] < 0) continue;
-          for (const v of adj[u]) {
-            if (!(D[v] > D[u] + 1e-9)) continue;
+          const exits = u === start ? [] : adj[u].filter(endOk);
+          for (const v of exits.length ? exits : adj[u]) {
+            if (!exits.length && !(D[v] > D[u] + 1e-9)) continue;
             if (u === start && firstOk && !firstOk(v)) continue;
             const l = best[u] + len(u, v);
             if (l > best[v] + 1e-9) { best[v] = l; prev[v] = u; }
           }
         }
         let end = -1;
-        for (const i of order) {
+        for (let i = 0; i < nodes.length; i++) {
           if (i === start || best[i] < 0 || !endOk(i)) continue;
           if (end < 0 || best[i] > best[end] + 1e-9) end = i;
         }
