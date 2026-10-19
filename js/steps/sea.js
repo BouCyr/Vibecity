@@ -10,16 +10,21 @@
 
   /**
    * Reference coast for the selected fronts, as guides: each guide has a
-   * `line` (polyline of the coast curve) and `land` (closed polygon of the land
-   * side, or null when the whole map is on the land side).
-   *  - one front, or two opposite fronts: the front edges themselves;
+   * `line` (polyline of the coast curve) and either `land` or `sea` (closed
+   * polygon of that side; neither when the whole map is on the land side).
+   *  - one front: a slanted line. Starting from one end of the edge (picked at
+   *    random), it leaves the edge `offset` px (random, 100–250) from that
+   *    corner, and reaches the adjacent edge `offset` px inland from the other
+   *    corner. E.g. front E, from the north, 156 px: from 156 px south of the
+   *    NE corner to 156 px west of the SE corner;
+   *  - two opposite fronts: the front edges themselves;
    *  - two adjacent fronts: a parabola from the far end of one front to the far
    *    end of the other, bending toward (but avoiding) their shared corner;
    *  - three fronts: a parabola from the two corners of the land edge, with its
    *    vertex at the middle of the opposite edge;
    *  - four fronts: a circle centered on the map, touching the edge middles.
    */
-  function coastGuides(fronts, w, h) {
+  function coastGuides(fronts, w, h, rng) {
     const P = {
       NW: { x: 0, y: 0 }, NE: { x: w, y: 0 }, SE: { x: w, y: h }, SW: { x: 0, y: h }
     };
@@ -67,6 +72,19 @@
       const far = corner(OPPOSITE[a], OPPOSITE[b]);
       return [{ line: pts, land: pts.concat([far]) }];
     }
+    if (sorted.length === 1) {
+      const f = sorted[0];
+      const ends = f === 'N' || f === 'S' ? ['W', 'E'] : ['N', 'S'];
+      if (rng.random() < 0.5) ends.reverse();
+      const offset = rng.int(100, 250);
+      const e0 = corner(f, ends[0]), e1 = corner(f, ends[1]);
+      const len = Math.hypot(e1.x - e0.x, e1.y - e0.y);
+      const a = { x: e0.x + ((e1.x - e0.x) / len) * offset, y: e0.y + ((e1.y - e0.y) / len) * offset };
+      // Inward normal of edge f.
+      const nx = f === 'W' ? 1 : f === 'E' ? -1 : 0, ny = f === 'N' ? 1 : f === 'S' ? -1 : 0;
+      const b = { x: e1.x + nx * offset, y: e1.y + ny * offset };
+      return [{ line: [a, b], sea: [a, e1, b], from: ends[0], offset: offset }];
+    }
     return sorted.map(edge);
   }
 
@@ -102,7 +120,7 @@
     let best = Infinity;
     for (const g of guides) {
       let d = distToPolyline(x, y, g.line);
-      if (g.land && !insidePolygon(tx, ty, g.land)) d = -d;
+      if ((g.land && !insidePolygon(tx, ty, g.land)) || (g.sea && insidePolygon(tx, ty, g.sea))) d = -d;
       if (d < best) best = d;
     }
     return best;
@@ -164,7 +182,7 @@
     run(state, s, rng, ctx) {
       const fronts = s.fronts || [];
       const reach = Math.max(1, (s.reach / 100) * Math.min(ctx.width, ctx.height));
-      const guides = coastGuides(fronts, ctx.width, ctx.height);
+      const guides = coastGuides(fronts, ctx.width, ctx.height, rng);
       state.coastGuides = guides;
 
       // Lower the altitude according to the signed distance to the reference coast:
@@ -199,7 +217,9 @@
       state.seaFronts = fronts.slice();
       updateSeaFlags(state);
 
-      return nSea + ' sea cells, sea level ' + (nSea ? state.seaLevel.toFixed(2) : '—') + ', ' + state.coastline.length + ' coast edges';
+      const slant = guides.length === 1 && guides[0].from
+        ? 'coast from ' + guides[0].from + ', offset ' + guides[0].offset + ' px; ' : '';
+      return slant + nSea + ' sea cells, sea level ' + (nSea ? state.seaLevel.toFixed(2) : '—') + ', ' + state.coastline.length + ' coast edges';
     },
 
     draw(g, state) {
