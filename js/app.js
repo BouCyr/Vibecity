@@ -13,7 +13,8 @@
   const STEPS = [
     window.PointsStep,
     window.VoronoiStep,
-    window.AltitudeStep
+    window.AltitudeStep,
+    window.SeaStep
   ];
 
   const els = {
@@ -55,7 +56,9 @@
       }
       if (!src) continue;
       for (const s of step.settings) {
-        if (src[s.key] !== undefined) config.steps[step.id][s.key] = src[s.key];
+        if (src[s.key] === undefined) continue;
+        if (s.type === 'toggles' && !Array.isArray(src[s.key])) continue;
+        config.steps[step.id][s.key] = src[s.key];
       }
     }
   }
@@ -164,6 +167,28 @@
       }
       input.value = values[s.key];
       input.addEventListener('change', () => { values[s.key] = input.value; changed(); });
+    } else if (s.type === 'toggles') {
+      // Several on/off options; the value is the array of the selected option values.
+      input = document.createElement('div');
+      input.className = 'toggles';
+      for (const o of s.options) {
+        const item = document.createElement('label');
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.id = id + '-' + o.value;
+        box.checked = values[s.key].indexOf(o.value) >= 0;
+        box.addEventListener('change', () => {
+          values[s.key] = s.options
+            .map((x) => x.value)
+            .filter((v) => (v === o.value ? box.checked : values[s.key].indexOf(v) >= 0));
+          changed();
+        });
+        item.appendChild(box);
+        item.appendChild(document.createTextNode(o.label));
+        if (o.title) item.title = o.title;
+        input.appendChild(item);
+      }
+      label.htmlFor = id + '-' + s.options[0].value;
     } else if (s.type === 'range') {
       const out = document.createElement('output');
       out.textContent = values[s.key];
@@ -186,7 +211,7 @@
       input.value = values[s.key];
       input.addEventListener('change', () => { values[s.key] = Number(input.value); changed(); });
     }
-    input.id = id;
+    if (!input.id) input.id = id;
     wrap.appendChild(input);
     return wrap;
   }

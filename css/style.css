@@ -121,6 +121,20 @@ input[type=text], input[type=number], select {
 .setting label output { color: var(--ink); }
 .setting input[type=range] { width: 100%; accent-color: var(--accent); }
 .setting select, .setting input[type=number] { width: 100%; }
+.toggles { display: flex; gap: 6px; }
+.toggles label {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  margin: 0;
+  padding: 3px 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fffdf7;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+.toggles input { margin: 0; accent-color: var(--accent); }
 
 .step-info { margin-top: 8px; font-size: 12px; color: var(--muted); font-style: italic; }
 
