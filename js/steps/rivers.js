@@ -64,7 +64,10 @@
     return top;
   };
 
-  /** Dijkstra from `src` to the first reached node of `targets`. Returns node ids or null. */
+  /**
+   * Dijkstra from `src` to the first reached node of `targets`. Returns the
+   * node ids (with a `cost` property) or null.
+   */
   function shortestPath(adj, src, targets, edgeCost, blocked) {
     const dist = new Map([[src, 0]]);
     const prev = new Map();
@@ -77,7 +80,9 @@
         const path = [u];
         let v = u;
         while (prev.has(v)) { v = prev.get(v); path.push(v); }
-        return path.reverse();
+        path.reverse();
+        path.cost = d;
+        return path;
       }
       for (const v of adj[u]) {
         if (blocked(v) && !targets.has(v)) continue;
@@ -103,6 +108,33 @@
     }
     return pts;
   }
+
+  const CONFLUENCE_SCALE = 120;   // px upstream used to measure a confluence angle
+  const CONFLUENCE_APPROACH = 150; // px around a confluence where the river must come from upstream
+  const CONFLUENCE_CANDIDATES = 12;
+
+  /** Point at arc length `len` before index `end` along a list of points (clamped to the start). */
+  function pointUpstream(pts, end, len) {
+    let left = len;
+    for (let k = end; k > 0; k--) {
+      const a = pts[k], b = pts[k - 1];
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      if (d >= left) return { x: a.x + ((b.x - a.x) * left) / d, y: a.y + ((b.y - a.y) * left) / d };
+      left -= d;
+    }
+    return pts[0];
+  }
+
+  /** Angle (degrees) at pts1[end1] between the two upstream branches. */
+  function upstreamAngle(pts1, end1, pts2, end2) {
+    const c = pts1[end1];
+    const a = pointUpstream(pts1, end1, CONFLUENCE_SCALE), b = pointUpstream(pts2, end2, CONFLUENCE_SCALE);
+    const ax = a.x - c.x, ay = a.y - c.y, bx = b.x - c.x, by = b.y - c.y;
+    const cos = (ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by) || 1);
+    return (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+  }
+
+  global.upstreamAngle = upstreamAngle;
 
   global.RiversStep = {
     id: 'rivers',
@@ -279,15 +311,39 @@
           fallback = true;
           valid = [fleuve.slice(1, -1).reduce((b, v) => (distCoast(nodes[v].x, nodes[v].y) > distCoast(nodes[b].x, nodes[b].y) ? v : b), fleuve[1])];
         }
-        const target = valid.reduce((b, v) => (Math.hypot(nodes[v].x - nodes[src].x, nodes[v].y - nodes[src].y) <
-          Math.hypot(nodes[b].x - nodes[src].x, nodes[b].y - nodes[src].y) ? v : b), valid[0]);
-        const path = route(src, target, new Set(valid), (v) => used.has(v));
-        if (!path) continue;
+        // Try the fleuve nodes nearest to the source; the river must reach each one
+        // from its upstream side (downstream half-disk blocked) and form an angle
+        // of at most 90° with the fleuve's upstream branch. Cheapest valid wins.
+        const fPts = fleuve.map((v) => nodes[v]);
+        const candidates = valid.slice().sort((a, b) =>
+          Math.hypot(nodes[a].x - nodes[src].x, nodes[a].y - nodes[src].y) -
+          Math.hypot(nodes[b].x - nodes[src].x, nodes[b].y - nodes[src].y)).slice(0, CONFLUENCE_CANDIDATES);
+        let path = null, angle = 0;
+        for (const t of candidates) {
+          const k = fleuve.indexOf(t);
+          const up = pointUpstream(fPts, k, CONFLUENCE_SCALE);
+          const T = nodes[t];
+          const ux = up.x - T.x, uy = up.y - T.y;
+          const downstream = (v) => {
+            const n = nodes[v];
+            const dx = n.x - T.x, dy = n.y - T.y;
+            return dx * dx + dy * dy < CONFLUENCE_APPROACH * CONFLUENCE_APPROACH && dx * ux + dy * uy < 0;
+          };
+          const p = route(src, t, new Set([t]), (v) => used.has(v) || downstream(v));
+          if (!p) continue;
+          const a = upstreamAngle(fPts, k, p.map((v) => nodes[v]), p.length - 1);
+          if (a <= 90 && (!path || p.cost < path.cost)) { path = p; angle = a; }
+        }
+        if (!path) {
+          notes.push('river from ' + side + ' skipped: no confluence at 90° or less');
+          continue;
+        }
         const join = path[path.length - 1];
         state.rivers.push({ kind: 'river', side: side, nodes: path, joins: 0, mouth: join });
         path.slice(0, -1).forEach((v) => used.add(v));
         courseLines.push(path.map((v) => nodes[v]));
-        notes.push('river from ' + side + ' joins ' + Math.round(distCoast(nodes[join].x, nodes[join].y)) + ' px from the coast' + (fallback ? ' (closer than asked: fleuve too short)' : ''));
+        notes.push('river from ' + side + ' joins ' + Math.round(distCoast(nodes[join].x, nodes[join].y)) + ' px from the coast at ' +
+          Math.round(angle) + '°' + (fallback ? ' (closer than asked: fleuve too short)' : ''));
       }
 
       // Widths, flags, pinned nodes.
