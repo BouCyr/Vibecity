@@ -145,7 +145,7 @@
       {
         key: 'count', label: 'Watercourses', type: 'select', default: 'auto',
         options: [
-          { value: 'auto', label: 'Auto (2 land edges: 1, 3: 2)' },
+          { value: 'auto', label: 'Auto (2 land edges: 1, 3: 2, no sea: 2)' },
           { value: '0', label: 'None' },
           { value: '1', label: '1 (fleuve)' },
           { value: '2', label: '2 (fleuve + 1 river)' },
@@ -180,12 +180,14 @@
       // How many courses.
       const fronts = state.seaFronts || [];
       const landSides = SIDES.filter((f) => fronts.indexOf(f) < 0);
+      // Without a sea, the fleuve crosses the map (from one edge to the opposite
+      // one) and up to two rivers come from the other two edges.
+      const noSea = !fronts.length;
       let count;
-      if (!fronts.length) count = 0;
-      else if (s.count === 'auto') {
-        count = landSides.length === 3 ? 2
+      if (s.count === 'auto') {
+        count = noSea ? 2 : landSides.length === 3 ? 2
           : landSides.length === 2 && OPPOSITE[landSides[0]] !== landSides[1] ? 1 : 0;
-      } else count = Math.min(Number(s.count), landSides.length);
+      } else count = Math.min(Number(s.count), noSea ? 3 : landSides.length);
       if (!count) return 'no watercourse (' + landSides.length + ' land edges)';
 
       // Graph: edges between two land cells.
@@ -233,8 +235,10 @@
 
       // Fleuve source side: the land edge facing a sea front if any (ties drawn).
       const score = (f) => (fronts.indexOf(OPPOSITE[f]) >= 0 ? 1 : 0);
-      const ranked = rng.shuffle(landSides.slice()).sort((a, b) => score(b) - score(a));
+      let ranked = rng.shuffle(landSides.slice()).sort((a, b) => score(b) - score(a));
       const fleuveSide = ranked[0];
+      // Without a sea: the fleuve leaves through the opposite edge, rivers come from the other two.
+      if (noSea) ranked = [fleuveSide].concat(ranked.filter((f) => f !== fleuveSide && f !== OPPOSITE[fleuveSide]));
       const riverSides = ranked.slice(1, count);
 
       const coastSegs = (state.coastline || []).map(([a, b]) => [nodes[a], nodes[b]]);
@@ -280,21 +284,29 @@
         return shortestPath(adj, src, targets, cost, blocked);
       };
 
-      // Fleuve: to a coast node reachable by land edges, away from the map border.
+      // Fleuve: to a coast node reachable by land edges, away from the map border
+      // (without a sea: to a node of the opposite edge, the map exit).
       const fSrc = pickSource(fleuveSide);
       const mouths = [];
-      nodes.forEach((n, i) => {
+      if (noSea) {
+        const exit = pickSource(OPPOSITE[fleuveSide]);
+        if (exit >= 0) mouths.push(exit);
+      } else nodes.forEach((n, i) => {
         if (!n.coast || !adj[i].length) return;
         if (n.x < MOUTH_BORDER_GAP || n.y < MOUTH_BORDER_GAP || n.x > W - MOUTH_BORDER_GAP || n.y > H - MOUTH_BORDER_GAP) return;
         mouths.push(i);
       });
-      if (fSrc < 0 || !mouths.length) return 'no watercourse (no reachable coast)';
+      if (fSrc < 0 || !mouths.length) return 'no watercourse (no reachable ' + (noSea ? 'exit' : 'coast') + ')';
+      // Distance used for the confluence constraint: to the coast, or to the map exit without a sea.
+      const distMouth = noSea
+        ? (x, y) => Math.hypot(x - nodes[mouths[0]].x, y - nodes[mouths[0]].y)
+        : distCoast;
       mouths.sort((a, b) => Math.hypot(nodes[a].x - nodes[fSrc].x, nodes[a].y - nodes[fSrc].y) -
         Math.hypot(nodes[b].x - nodes[fSrc].x, nodes[b].y - nodes[fSrc].y));
       const mouth = mouths[rng.int(0, Math.min(4, mouths.length - 1))];
       const used = new Set();
       const fPath = route(fSrc, mouth, new Set([mouth]), (v) => used.has(v));
-      if (!fPath) return 'no watercourse (no land path to the sea)';
+      if (!fPath) return 'no watercourse (no land path to the ' + (noSea ? 'exit' : 'sea') + ')';
       state.rivers.push({ kind: 'fleuve', side: fleuveSide, nodes: fPath, joins: null, mouth: mouth });
       fPath.forEach((v) => used.add(v));
       courseLines.push(fPath.map((v) => nodes[v]));
@@ -305,11 +317,11 @@
         const src = pickSource(side, courseLines);
         if (src < 0 || used.has(src)) continue;
         const fleuve = state.rivers[0].nodes;
-        let valid = fleuve.slice(1, -1).filter((v) => distCoast(nodes[v].x, nodes[v].y) >= s.confluenceMin);
+        let valid = fleuve.slice(1, -1).filter((v) => distMouth(nodes[v].x, nodes[v].y) >= s.confluenceMin);
         let fallback = false;
         if (!valid.length) {
           fallback = true;
-          valid = [fleuve.slice(1, -1).reduce((b, v) => (distCoast(nodes[v].x, nodes[v].y) > distCoast(nodes[b].x, nodes[b].y) ? v : b), fleuve[1])];
+          valid = [fleuve.slice(1, -1).reduce((b, v) => (distMouth(nodes[v].x, nodes[v].y) > distMouth(nodes[b].x, nodes[b].y) ? v : b), fleuve[1])];
         }
         // Try the fleuve nodes nearest to the source; the river must reach each one
         // from its upstream side (downstream half-disk blocked) and form an angle
@@ -342,7 +354,7 @@
         state.rivers.push({ kind: 'river', side: side, nodes: path, joins: 0, mouth: join });
         path.slice(0, -1).forEach((v) => used.add(v));
         courseLines.push(path.map((v) => nodes[v]));
-        notes.push('river from ' + side + ' joins ' + Math.round(distCoast(nodes[join].x, nodes[join].y)) + ' px from the coast at ' +
+        notes.push('river from ' + side + ' joins ' + Math.round(distMouth(nodes[join].x, nodes[join].y)) + ' px from the ' + (noSea ? 'map exit' : 'coast') + ' at ' +
           Math.round(angle) + '°' + (fallback ? ' (closer than asked: fleuve too short)' : ''));
       }
 

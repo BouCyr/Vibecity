@@ -219,7 +219,8 @@
 
       // The lowest `percent` of cells become sea.
       const order = state.cells.map((c, i) => i).sort((a, b) => state.cells[a].altitude - state.cells[b].altitude || a - b);
-      const nSea = Math.round((s.percent / 100) * order.length);
+      // Without a sea front there is no sea at all (no inland sea).
+      const nSea = fronts.length ? Math.round((s.percent / 100) * order.length) : 0;
       state.cells.forEach((c) => { c.sea = false; });
       for (let k = 0; k < nSea; k++) state.cells[order[k]].sea = true;
       state.seaLevel = nSea > 0 ? state.cells[order[nSea - 1]].altitude : -Infinity;
