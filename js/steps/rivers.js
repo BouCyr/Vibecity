@@ -1,7 +1,7 @@
 // Step 6 — rivers. A fleuve runs from a land edge of the map to the sea; extra
 // rivers come from other land edges and join the fleuve inside the map, not too
-// close to the coast. Courses follow Voronoi edges between two land cells, along
-// a meandering guide curve. Altitude is then made consistent with the water,
+// close to the coast. Courses follow Voronoi edges between two land cells; the
+// fleuve's course is chosen by one of three algorithms (see `algorithm`). Altitude is then made consistent with the water,
 // either by carving valleys into the existing relief or by recomputing it from
 // the distances to the coast and to the rivers.
 (function (global) {
@@ -93,34 +93,26 @@
     return null;
   }
 
-  /** Meandering guide polyline from a to b (two sine waves, tapered at both ends). */
-  function meanderGuide(a, b, amp, length, rng) {
-    const L = Math.hypot(b.x - a.x, b.y - a.y);
-    const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
-    const p1 = rng.random() * Math.PI * 2, p2 = rng.random() * Math.PI * 2;
-    const pts = [];
-    const n = 120;
-    for (let i = 0; i <= n; i++) {
-      const s = (i / n) * L;
-      const off = amp * Math.sin((Math.PI * s) / L) *
-        (Math.sin((2 * Math.PI * s) / length + p1) + 0.4 * Math.sin((2 * Math.PI * s) / (0.45 * length) + p2)) / 1.4;
-      pts.push({ x: a.x + ux * s - uy * off, y: a.y + uy * s + ux * off });
-    }
-    return pts;
-  }
-
-  const CONFLUENCE_SCALE = 120;   // px upstream used to measure a confluence angle
+  const CONFLUENCE_SCALE = 120;   // px (straight line) upstream used to measure a confluence angle
   const CONFLUENCE_APPROACH = 150; // px around a confluence where the river must come from upstream
   const CONFLUENCE_CANDIDATES = 12;
 
-  /** Point at arc length `len` before index `end` along a list of points (clamped to the start). */
+  /**
+   * First point upstream of index `end` that is `len` px away from pts[end] as
+   * the crow flies (the start of the course if none). Straight-line distance
+   * keeps the measure stable whether the course zigzags or has been smoothed.
+   */
   function pointUpstream(pts, end, len) {
-    let left = len;
+    const c = pts[end];
     for (let k = end; k > 0; k--) {
       const a = pts[k], b = pts[k - 1];
-      const d = Math.hypot(b.x - a.x, b.y - a.y);
-      if (d >= left) return { x: a.x + ((b.x - a.x) * left) / d, y: a.y + ((b.y - a.y) * left) / d };
-      left -= d;
+      const db = Math.hypot(b.x - c.x, b.y - c.y);
+      if (db < len) continue;
+      // Crossing of the circle of radius len on segment a→b.
+      const dx = b.x - a.x, dy = b.y - a.y, fx = a.x - c.x, fy = a.y - c.y;
+      const A = dx * dx + dy * dy, B = 2 * (fx * dx + fy * dy), C = fx * fx + fy * fy - len * len;
+      const t = A > 0 ? Math.max(0, Math.min(1, (-B + Math.sqrt(Math.max(0, B * B - 4 * A * C))) / (2 * A))) : 0;
+      return { x: a.x + t * dx, y: a.y + t * dy };
     }
     return pts[0];
   }
@@ -153,14 +145,20 @@
         ]
       },
       {
+        key: 'algorithm', label: 'Fleuve course', type: 'select', default: 'shortest',
+        options: [
+          { value: 'shortest', label: 'Shortest path from a land edge to the coast' },
+          { value: 'climbPx', label: 'Longest climb from the mouth (distance in px)' },
+          { value: 'climbHops', label: 'Longest climb from the mouth (distance in edges)' }
+        ]
+      },
+      {
         key: 'altitudeMode', label: 'Altitude', type: 'select', default: 'carve',
         options: [
           { value: 'carve', label: 'Carve valleys into the relief' },
           { value: 'recompute', label: 'Recompute from coast and rivers' }
         ]
       },
-      { key: 'meanderAmp', label: 'Meander amplitude (px)', type: 'range', min: 0, max: 400, step: 10, default: 200 },
-      { key: 'meanderLength', label: 'Meander length (px)', type: 'range', min: 150, max: 1500, step: 10, default: 500 },
       { key: 'confluenceMin', label: 'Confluence min distance to coast (px)', type: 'range', min: 0, max: 1200, step: 10, default: 500 },
       { key: 'fleuveWidth', label: 'Fleuve width (px)', type: 'range', min: 4, max: 80, step: 1, default: 32 },
       { key: 'riverWidth', label: 'River width (px)', type: 'range', min: 2, max: 40, step: 1, default: 16 },
@@ -235,11 +233,7 @@
 
       // Fleuve source side: the land edge facing a sea front if any (ties drawn).
       const score = (f) => (fronts.indexOf(OPPOSITE[f]) >= 0 ? 1 : 0);
-      let ranked = rng.shuffle(landSides.slice()).sort((a, b) => score(b) - score(a));
-      const fleuveSide = ranked[0];
-      // Without a sea: the fleuve leaves through the opposite edge, rivers come from the other two.
-      if (noSea) ranked = [fleuveSide].concat(ranked.filter((f) => f !== fleuveSide && f !== OPPOSITE[fleuveSide]));
-      const riverSides = ranked.slice(1, count);
+      const ranked = rng.shuffle(landSides.slice()).sort((a, b) => score(b) - score(a));
 
       const coastSegs = (state.coastline || []).map(([a, b]) => [nodes[a], nodes[b]]);
       const distCoast = (x, y) => {
@@ -249,17 +243,10 @@
       };
 
       const carve = s.altitudeMode === 'carve';
-      const amp = s.meanderAmp, norm = Math.max(60, amp);
       // Existing courses, to keep a new river from running alongside them.
       const HUG = 150, HUG_FREE = 80;
       const courseLines = [];
       const route = (src, target, targets, blocked) => {
-        const guide = meanderGuide(nodes[src], nodes[target], amp, s.meanderLength, rng);
-        const dg = new Map();
-        const guideDist = (i) => {
-          if (!dg.has(i)) dg.set(i, distToPolyline(nodes[i].x, nodes[i].y, guide));
-          return dg.get(i);
-        };
         const hug = new Map();
         const hugFactor = (i) => {
           if (!hug.has(i)) {
@@ -277,39 +264,115 @@
         };
         const cost = (u, v) => {
           const a = nodes[u], b = nodes[v];
-          const g = (guideDist(u) + guideDist(v)) / 2 / norm;
           const alt = carve ? 1 + 3 * Math.max(0, (a.altitude + b.altitude) / 2) : 1;
-          return Math.hypot(b.x - a.x, b.y - a.y) * (1 + 8 * g * g) * alt * Math.max(hugFactor(u), hugFactor(v));
+          return Math.hypot(b.x - a.x, b.y - a.y) * alt * Math.max(hugFactor(u), hugFactor(v));
         };
         return shortestPath(adj, src, targets, cost, blocked);
       };
 
-      // Fleuve: to a coast node reachable by land edges, away from the map border
-      // (without a sea: to a node of the opposite edge, the map exit).
-      const fSrc = pickSource(fleuveSide);
-      const mouths = [];
-      if (noSea) {
-        const exit = pickSource(OPPOSITE[fleuveSide]);
-        if (exit >= 0) mouths.push(exit);
-      } else nodes.forEach((n, i) => {
-        if (!n.coast || !adj[i].length) return;
-        if (n.x < MOUTH_BORDER_GAP || n.y < MOUTH_BORDER_GAP || n.x > W - MOUTH_BORDER_GAP || n.y > H - MOUTH_BORDER_GAP) return;
-        mouths.push(i);
-      });
-      if (fSrc < 0 || !mouths.length) return 'no watercourse (no reachable ' + (noSea ? 'exit' : 'coast') + ')';
-      // Distance used for the confluence constraint: to the coast, or to the map exit without a sea.
-      const distMouth = noSea
-        ? (x, y) => Math.hypot(x - nodes[mouths[0]].x, y - nodes[mouths[0]].y)
-        : distCoast;
-      mouths.sort((a, b) => Math.hypot(nodes[a].x - nodes[fSrc].x, nodes[a].y - nodes[fSrc].y) -
-        Math.hypot(nodes[b].x - nodes[fSrc].x, nodes[b].y - nodes[fSrc].y));
-      const mouth = mouths[rng.int(0, Math.min(4, mouths.length - 1))];
+      /**
+       * "Longest climb": the mouth is the coast node nearest to the map center.
+       * Every land node gets its shortest distance to the coast along land
+       * edges (in px, or in edges when `hops`). The fleuve is the longest path
+       * from the mouth to a map-border node along which that distance strictly
+       * increases (longest in the same unit; ties broken by length in px).
+       * Without a sea, the nodes of a drawn exit edge play the coast's role.
+       */
+      const climb = (hops) => {
+        let exit = null;
+        let coast;
+        if (noSea) {
+          exit = SIDES[rng.int(0, 3)];
+          coast = nodes.map((n, i) => i).filter((i) => sideOf(nodes[i], W, H) === exit && adj[i].length);
+        } else {
+          coast = nodes.map((n, i) => i).filter((i) => nodes[i].coast && adj[i].length);
+        }
+        if (!coast.length) return null;
+        const center = (i) => Math.hypot(nodes[i].x - W / 2, nodes[i].y - H / 2);
+        const mouthNode = coast.reduce((b, i) => (center(i) < center(b) ? i : b), coast[0]);
+        const len = (u, v) => Math.hypot(nodes[v].x - nodes[u].x, nodes[v].y - nodes[u].y);
+
+        // Distance to the coast (multi-source Dijkstra).
+        const D = new Float64Array(nodes.length).fill(Infinity);
+        const heap = new Heap();
+        for (const i of coast) { D[i] = 0; heap.push(0, i); }
+        while (heap.a.length) {
+          const [d, u] = heap.pop();
+          if (d > D[u]) continue;
+          for (const v of adj[u]) {
+            const nd = d + (hops ? 1 : len(u, v));
+            if (nd < D[v]) { D[v] = nd; heap.push(nd, v); }
+          }
+        }
+
+        // Longest strictly-increasing path from the mouth (DAG ordered by D).
+        const order = nodes.map((n, i) => i).filter((i) => isFinite(D[i])).sort((a, b) => D[a] - D[b] || a - b);
+        const bestLen = new Float64Array(nodes.length).fill(-1);
+        const bestPx = new Float64Array(nodes.length).fill(-1);
+        const prev = new Int32Array(nodes.length).fill(-1);
+        bestLen[mouthNode] = 0; bestPx[mouthNode] = 0;
+        const better = (l1, p1, l2, p2) => l1 > l2 + 1e-9 || (Math.abs(l1 - l2) <= 1e-9 && p1 > p2 + 1e-9);
+        for (const u of order) {
+          if (bestLen[u] < 0) continue;
+          for (const v of adj[u]) {
+            if (!(D[v] > D[u] + 1e-9)) continue;
+            const w = len(u, v);
+            const l = bestLen[u] + (hops ? 1 : w), px = bestPx[u] + w;
+            if (better(l, px, bestLen[v], bestPx[v])) { bestLen[v] = l; bestPx[v] = px; prev[v] = u; }
+          }
+        }
+        let end = -1;
+        nodes.forEach((n, i) => {
+          if (i === mouthNode || bestLen[i] < 0) return;
+          const side = sideOf(n, W, H);
+          if (!side || side === exit) return;
+          if (end < 0 || better(bestLen[i], bestPx[i], bestLen[end], bestPx[end])) end = i;
+        });
+        if (end < 0) return null;
+        const path = [];
+        for (let v = end; v >= 0; v = prev[v]) path.push(v);
+        return { path: path, exitSide: exit };
+      };
+
+      // Fleuve.
       const used = new Set();
-      const fPath = route(fSrc, mouth, new Set([mouth]), (v) => used.has(v));
-      if (!fPath) return 'no watercourse (no land path to the ' + (noSea ? 'exit' : 'sea') + ')';
+      let fPath, fleuveSide, exitSide = null;
+      if (s.algorithm === 'climbPx' || s.algorithm === 'climbHops') {
+        const res = climb(s.algorithm === 'climbHops');
+        if (!res) return 'no watercourse (no reachable ' + (noSea ? 'exit' : 'coast') + ')';
+        fPath = res.path;
+        exitSide = res.exitSide;
+        fleuveSide = sideOf(nodes[fPath[0]], W, H);
+      } else {
+        // Shortest path from a land edge (the one facing a sea front) to a coast
+        // node near it, away from the map border (without a sea: to the opposite edge).
+        fleuveSide = ranked[0];
+        const fSrc = pickSource(fleuveSide);
+        const mouths = [];
+        if (noSea) {
+          exitSide = OPPOSITE[fleuveSide];
+          const exit = pickSource(exitSide);
+          if (exit >= 0) mouths.push(exit);
+        } else nodes.forEach((n, i) => {
+          if (!n.coast || !adj[i].length) return;
+          if (n.x < MOUTH_BORDER_GAP || n.y < MOUTH_BORDER_GAP || n.x > W - MOUTH_BORDER_GAP || n.y > H - MOUTH_BORDER_GAP) return;
+          mouths.push(i);
+        });
+        if (fSrc < 0 || !mouths.length) return 'no watercourse (no reachable ' + (noSea ? 'exit' : 'coast') + ')';
+        mouths.sort((a, b) => Math.hypot(nodes[a].x - nodes[fSrc].x, nodes[a].y - nodes[fSrc].y) -
+          Math.hypot(nodes[b].x - nodes[fSrc].x, nodes[b].y - nodes[fSrc].y));
+        const mouth = mouths[rng.int(0, Math.min(4, mouths.length - 1))];
+        fPath = route(fSrc, mouth, new Set([mouth]), (v) => used.has(v));
+        if (!fPath) return 'no watercourse (no land path to the ' + (noSea ? 'exit' : 'sea') + ')';
+      }
+      const mouth = fPath[fPath.length - 1];
       state.rivers.push({ kind: 'fleuve', side: fleuveSide, nodes: fPath, joins: null, mouth: mouth });
       fPath.forEach((v) => used.add(v));
       courseLines.push(fPath.map((v) => nodes[v]));
+      // Distance used for the confluence constraint: to the coast, or to the map exit without a sea.
+      const distMouth = noSea ? (x, y) => Math.hypot(x - nodes[mouth].x, y - nodes[mouth].y) : distCoast;
+      // Rivers come from the other land edges (not the fleuve's, nor its exit).
+      const riverSides = ranked.filter((f) => f !== fleuveSide && f !== exitSide).slice(0, count - 1);
 
       // Rivers: to a fleuve node far enough from the coast.
       const notes = [];
