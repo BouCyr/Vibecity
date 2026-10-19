@@ -4,6 +4,7 @@
 //     of a corner that is not between two sea fronts.
 //  2. Sea areas that reach no sea front (inland seas) are filled: they become land,
 //     raised to the lowest land altitude around them.
+//  3. Islands made of a single land cell become sea.
 // Sea cells (and nodes surrounded by sea) then lose their altitude (set to 0).
 (function (global) {
   'use strict';
@@ -52,10 +53,11 @@
     defaultVisible: false,
     settings: [
       {
-        key: 'passes', label: 'Corrections', type: 'toggles', default: ['edges', 'inland'],
+        key: 'passes', label: 'Corrections', type: 'toggles', default: ['edges', 'inland', 'islands'],
         options: [
           { value: 'edges', label: 'Front edges', title: 'Land touching a sea-front edge becomes sea, except next to a land corner' },
-          { value: 'inland', label: 'Inland seas', title: 'Sea areas reaching no sea front are filled' }
+          { value: 'inland', label: 'Inland seas', title: 'Sea areas reaching no sea front are filled' },
+          { value: 'islands', label: 'Lone islands', title: 'Islands of a single cell become sea' }
         ]
       }
     ],
@@ -125,6 +127,17 @@
         });
       }
 
+      // 3. Single-cell islands.
+      let islands = 0;
+      if (passes.indexOf('islands') >= 0) {
+        for (const group of components(cells, (c) => !c.sea)) {
+          if (group.length !== 1) continue;
+          cells[group[0]].sea = true;
+          changes.push({ cell: group[0], toSea: true });
+          islands++;
+        }
+      }
+
       updateSeaFlags(state);
       // Sea altitude is not used further.
       for (const c of cells) if (c.sea) c.altitude = 0;
@@ -134,7 +147,7 @@
       const toSea = changes.filter((ch) => ch.toSea).length;
       let seaCount = 0;
       for (const c of cells) if (c.sea) seaCount++;
-      return toSea + ' edge cells to sea, ' + filled + ' inland seas filled (' + (changes.length - toSea) +
+      return (toSea - islands) + ' edge cells to sea, ' + islands + ' lone islands removed, ' + filled + ' inland seas filled (' + (changes.length - toSea) +
         ' cells); ' + Math.round((100 * seaCount) / Math.max(1, cells.length)) + '% sea';
     },
 
