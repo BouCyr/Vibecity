@@ -164,8 +164,10 @@
   global.SeaStep = {
     id: 'sea',
     title: 'Sea',
-    // Drawn above the altitude, under the Voronoi edges.
+    // Drawn above the altitude, under the Voronoi edges. Hidden by default: the
+    // smooth coast step draws the sea.
     zIndex: -0.5,
+    defaultVisible: false,
     settings: [
       {
         key: 'fronts', label: 'Sea fronts', type: 'toggles', default: ['E', 'S'],
