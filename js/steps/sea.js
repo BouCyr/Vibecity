@@ -17,8 +17,7 @@
    *    corner, and reaches the adjacent edge `offset` px inland from the other
    *    corner. E.g. front E, from the north, 156 px: from 156 px south of the
    *    NE corner to 156 px west of the SE corner;
-   *  - two opposite fronts: the same, both with one offset; the second starts
-   *    from the other end, so the two coasts are parallel;
+   *  - two opposite fronts: the same for each front, drawn independently;
    *  - two adjacent fronts: a parabola from the far end of one front to the far
    *    end of the other, bending toward (but avoiding) their shared corner;
    *  - three fronts: a parabola from the two corners of the land edge, with its
@@ -77,19 +76,16 @@
       // Inward normal of edge f.
       const nx = f === 'W' ? 1 : f === 'E' ? -1 : 0, ny = f === 'N' ? 1 : f === 'S' ? -1 : 0;
       const b = { x: e1.x + nx * offset, y: e1.y + ny * offset };
-      return { line: [a, b], sea: [a, e1, b], from: from, offset: offset };
+      return { line: [a, b], sea: [a, e1, b], front: f, from: from, offset: offset };
     };
     if (sorted.length === 1 || sorted.length === 2) {
-      // One front, or two opposite fronts (adjacent ones were handled above).
-      const f = sorted[0];
-      const ends = f === 'N' || f === 'S' ? ['W', 'E'] : ['N', 'S'];
-      const from = ends[rng.random() < 0.5 ? 1 : 0];
-      const offset = rng.int(100, 250);
-      const guides = [slanted(f, from, offset)];
-      // The opposite front starts from the other end with the same offset, so
-      // both coasts are parallel and lean the same way.
-      if (sorted.length === 2) guides.push(slanted(sorted[1], OPPOSITE[from], offset));
-      return guides;
+      // One front, or two opposite fronts (adjacent ones were handled above):
+      // each front draws its own start corner and offset.
+      return sorted.map((f) => {
+        const ends = f === 'N' || f === 'S' ? ['W', 'E'] : ['N', 'S'];
+        const from = ends[rng.random() < 0.5 ? 1 : 0];
+        return slanted(f, from, rng.int(100, 250));
+      });
     }
     return [];
   }
@@ -223,8 +219,8 @@
       state.seaFronts = fronts.slice();
       updateSeaFlags(state);
 
-      const slant = guides.filter((g) => g.from).map((g) => g.from).join('/');
-      const slantInfo = slant ? 'coast from ' + slant + ', offset ' + guides[0].offset + ' px; ' : '';
+      const slantInfo = guides.filter((g) => g.from)
+        .map((g) => g.front + ' coast from ' + g.from + ' +' + g.offset + ' px; ').join('');
       return slantInfo + nSea + ' sea cells, sea level ' + (nSea ? state.seaLevel.toFixed(2) : '—') + ', ' + state.coastline.length + ' coast edges';
     },
 
