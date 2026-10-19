@@ -60,7 +60,7 @@
     zIndex: -0.5,
     settings: [
       {
-        key: 'fronts', label: 'Sea fronts', type: 'toggles', default: ['S'],
+        key: 'fronts', label: 'Sea fronts', type: 'toggles', default: ['E', 'S'],
         options: [
           { value: 'N', label: 'N', title: 'North' },
           { value: 'E', label: 'E', title: 'East' },
