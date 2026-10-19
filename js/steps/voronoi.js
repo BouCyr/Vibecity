@@ -112,7 +112,7 @@
     id: 'voronoi',
     title: 'Voronoi diagram',
     settings: [
-      { key: 'relax', label: 'Lloyd relaxation', type: 'range', min: 0, max: 10, step: 1, default: 1 }
+      { key: 'relax', label: 'Lloyd relaxation', type: 'range', min: 0, max: 10, step: 1, default: 2 }
     ],
 
     run(state, s, rng, ctx) {
