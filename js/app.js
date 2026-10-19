@@ -21,6 +21,10 @@
     toggle: document.getElementById('panel-toggle'),
     seed: document.getElementById('seed'),
     seedRandom: document.getElementById('seed-random'),
+    save: document.getElementById('settings-save'),
+    load: document.getElementById('settings-load'),
+    reset: document.getElementById('settings-reset'),
+    configMsg: document.getElementById('config-msg'),
     steps: document.getElementById('steps'),
     status: document.getElementById('status'),
     stage: document.getElementById('stage'),
@@ -30,32 +34,101 @@
   // ---------- Config (seed + per-step settings), persisted in the URL hash ----------
 
   const config = { seed: '', steps: {}, visible: {} };
-  for (const step of STEPS) {
-    config.visible[step.id] = step.defaultVisible !== false;
-    config.steps[step.id] = {};
-    for (const s of step.settings) config.steps[step.id][s.key] = s.default;
+
+  /** Reset every step setting and layer visibility to its default (the seed is kept). */
+  function resetToDefaults() {
+    for (const step of STEPS) {
+      config.visible[step.id] = step.defaultVisible !== false;
+      config.steps[step.id] = {};
+      for (const s of step.settings) config.steps[step.id][s.key] = s.default;
+    }
+  }
+  resetToDefaults();
+
+  /** Copy known values from a saved config object; unknown or missing keys are ignored. */
+  function applyConfig(saved) {
+    if (typeof saved.seed === 'string') config.seed = saved.seed;
+    for (const step of STEPS) {
+      const src = saved.steps && saved.steps[step.id];
+      if (saved.visible && typeof saved.visible[step.id] === 'boolean') {
+        config.visible[step.id] = saved.visible[step.id];
+      }
+      if (!src) continue;
+      for (const s of step.settings) {
+        if (src[s.key] !== undefined) config.steps[step.id][s.key] = src[s.key];
+      }
+    }
   }
 
   function loadFromHash() {
     if (!location.hash) return false;
     try {
-      const saved = JSON.parse(decodeURIComponent(location.hash.slice(1)));
-      if (typeof saved.seed === 'string') config.seed = saved.seed;
-      for (const step of STEPS) {
-        const src = saved.steps && saved.steps[step.id];
-        if (saved.visible && typeof saved.visible[step.id] === 'boolean') {
-          config.visible[step.id] = saved.visible[step.id];
-        }
-        if (!src) continue;
-        for (const s of step.settings) {
-          if (src[s.key] !== undefined) config.steps[step.id][s.key] = src[s.key];
-        }
-      }
+      applyConfig(JSON.parse(decodeURIComponent(location.hash.slice(1))));
       return !!config.seed;
     } catch (e) {
       return false;
     }
   }
+
+  // ---------- Saved settings (one slot in this browser's local storage) ----------
+
+  const STORAGE_KEY = 'vibecity.savedSettings';
+
+  function readSaved() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  let msgTimer = 0;
+  function showMessage(text) {
+    els.configMsg.textContent = text;
+    clearTimeout(msgTimer);
+    msgTimer = setTimeout(() => { els.configMsg.textContent = ''; }, 3000);
+  }
+
+  function refreshLoadButton() {
+    const saved = readSaved();
+    els.load.disabled = !saved;
+    els.load.title = saved ? 'Load saved settings (seed "' + saved.seed + '")' : 'No saved settings yet';
+  }
+
+  /** Rebuild the panel from `config`, keeping which steps are collapsed, then regenerate. */
+  function configReplaced() {
+    const closed = Array.from(els.steps.children).map((li) => li.classList.contains('closed'));
+    els.seed.value = config.seed;
+    buildPanel();
+    Array.from(els.steps.children).forEach((li, i) => li.classList.toggle('closed', !!closed[i]));
+    changed();
+  }
+
+  els.save.addEventListener('click', () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+      showMessage('Settings saved (seed "' + config.seed + '")');
+    } catch (e) {
+      showMessage('This browser refused to save settings');
+    }
+    refreshLoadButton();
+  });
+
+  els.load.addEventListener('click', () => {
+    const saved = readSaved();
+    if (!saved) { showMessage('No saved settings yet'); return; }
+    resetToDefaults();
+    applyConfig(saved);
+    configReplaced();
+    showMessage('Saved settings loaded');
+  });
+
+  els.reset.addEventListener('click', () => {
+    resetToDefaults();
+    configReplaced();
+    showMessage('Settings reset to defaults (seed kept)');
+  });
 
   function saveToHash() {
     try {
@@ -238,6 +311,7 @@
   if (!loadFromHash()) config.seed = randomSeed();
   els.seed.value = config.seed;
   buildPanel();
+  refreshLoadButton();
   saveToHash();
   generate();
   resize();

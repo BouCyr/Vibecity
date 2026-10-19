@@ -64,6 +64,10 @@ button:hover { border-color: var(--accent); }
 .seed-box label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
 .seed-row { display: flex; gap: 6px; }
 .seed-row input { flex: 1; min-width: 0; }
+.config-row { display: flex; gap: 6px; margin-top: 6px; }
+.config-row button { flex: 1; font-size: 13px; padding: 3px 4px; }
+button:disabled { opacity: .45; cursor: default; border-color: var(--line); }
+#config-msg { min-height: 16px; margin-top: 4px; font-size: 12px; color: var(--accent); font-style: italic; }
 
 input[type=text], input[type=number], select {
   font: inherit;
