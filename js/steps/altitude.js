@@ -75,16 +75,20 @@
       return 'Mean cell altitude ' + (sum / Math.max(1, state.cells.length)).toFixed(2);
     },
 
-    // Each cell is drawn as a fan of triangles (center, node, next node), colored
-    // by the mean altitude of the three points, so node altitudes show too.
+    // Each cell is drawn as a fan of triangles (center, point, next point),
+    // colored by the mean altitude of the three, so node altitudes show too.
+    // Uses the cell polygon (which follows the smoothed coast once step 6 ran)
+    // and its per-point altitudes when available.
     draw(g, state) {
       g.lineWidth = 1;
       g.lineJoin = 'round';
       for (const c of state.cells) {
-        const ns = c.nodes;
-        for (let k = 0; k < ns.length; k++) {
-          const a = state.nodes[ns[k]], b = state.nodes[ns[(k + 1) % ns.length]];
-          const col = rampColor((c.altitude + a.altitude + b.altitude) / 3);
+        const poly = c.poly;
+        const alt = c.polyAlt || c.nodes.map((id) => state.nodes[id].altitude);
+        for (let k = 0; k < poly.length; k++) {
+          const k2 = (k + 1) % poly.length;
+          const a = poly[k], b = poly[k2];
+          const col = rampColor((c.altitude + alt[k] + alt[k2]) / 3);
           g.fillStyle = col;
           g.strokeStyle = col;
           g.beginPath();
