@@ -147,6 +147,9 @@
     return runs;
   }
 
+  /** Smoothed copy of an open or closed polyline, as step 7 does it (used by the rivers step). */
+  global.smoothPolyline = (pts, closed, radius) => smooth(resample(pts, closed).pts, closed, radius);
+
   global.CoastStep = {
     id: 'coast',
     title: 'Smooth coast & rivers',
