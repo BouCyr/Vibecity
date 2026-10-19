@@ -105,6 +105,49 @@
     return { x: x / (3 * a), y: y / (3 * a) };
   }
 
+  /**
+   * Merge the cells' polygon vertices into shared nodes (the Voronoi vertices).
+   * Sets cell.nodes = [node ids, same order as cell.poly] and returns
+   * [{ x, y, cells: [cell ids] }].
+   */
+  function buildNodes(cells) {
+    const nodes = [];
+    const buckets = new Map();
+    const Q = 100, EPS2 = 0.05 * 0.05;
+    function find(x, y) {
+      const qx = Math.round(x * Q), qy = Math.round(y * Q);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const list = buckets.get((qx + dx) + ',' + (qy + dy));
+          if (!list) continue;
+          for (const id of list) {
+            const n = nodes[id];
+            if ((n.x - x) * (n.x - x) + (n.y - y) * (n.y - y) < EPS2) return id;
+          }
+        }
+      }
+      const id = nodes.length;
+      nodes.push({ x: x, y: y, cells: [] });
+      const k = qx + ',' + qy;
+      if (!buckets.has(k)) buckets.set(k, []);
+      buckets.get(k).push(id);
+      return id;
+    }
+    cells.forEach((c, ci) => {
+      // Clipping can leave near-duplicate consecutive vertices; they merge here.
+      const ids = [];
+      for (const v of c.poly) {
+        const id = find(v.x, v.y);
+        if (ids[ids.length - 1] !== id) ids.push(id);
+      }
+      while (ids.length > 1 && ids[0] === ids[ids.length - 1]) ids.pop();
+      c.nodes = ids;
+      c.poly = ids.map((id) => ({ x: nodes[id].x, y: nodes[id].y }));
+      for (const id of ids) nodes[id].cells.push(ci);
+    });
+    return nodes;
+  }
+
   global.computeVoronoi = computeVoronoi;
   global.polygonCentroid = centroid;
 
@@ -134,14 +177,15 @@
         cells = computeVoronoi(sites, map);
       }
       state.cells = cells;
+      state.nodes = buildNodes(cells);
       let edges = 0;
       for (const c of cells) edges += c.neighbors.length;
-      return cells.length + ' cells, ' + edges / 2 + ' shared edges';
+      return cells.length + ' cells, ' + state.nodes.length + ' nodes, ' + edges / 2 + ' shared edges';
     },
 
     draw(g, state) {
-      g.strokeStyle = '#7a5c3c';
-      g.lineWidth = 2;
+      g.strokeStyle = 'rgba(90, 64, 40, .55)';
+      g.lineWidth = 1.5;
       g.lineJoin = 'round';
       g.beginPath();
       for (const c of state.cells) {

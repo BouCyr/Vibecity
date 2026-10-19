@@ -10,8 +10,11 @@ Procedural generator for the plan of a fictional medieval city. Plain HTML/JS, n
 ## Steps
 
 1. **Random points** — number of points, margin from the edges, distribution (true random or Poisson disk).
-2. **Voronoi diagram** — one cell per point, clipped to the map, with neighbor adjacency. Setting: Lloyd relaxation iterations (evens out cell sizes).
+2. **Voronoi diagram** — one cell per point, clipped to the map, with neighbor adjacency and shared nodes (Voronoi vertices). Setting: Lloyd relaxation iterations (evens out cell sizes).
+3. **Altitude** — altitude in [0, 1] for every cell center and node, from three layers of seeded simplex noise (hills, relief, local bumps), each with a size and a weight.
 
 Each step's checkbox toggles whether its layer is drawn.
 
-Add a step by creating `js/steps/<name>.js` exposing `{ id, title, settings, run(state, settings, rng, ctx), draw(g, state, ctx), defaultVisible? }` and adding it to `STEPS` in `js/app.js`.
+Add a step by creating `js/steps/<name>.js` exposing `{ id, title, settings, run(state, settings, rng, ctx), draw(g, state, ctx), defaultVisible?, zIndex? }` and adding it to `STEPS` in `js/app.js`.
+
+To get a single self-contained HTML file: `python3 tools/build-single.py vibecity.html`.

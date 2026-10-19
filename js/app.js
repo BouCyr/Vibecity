@@ -9,9 +9,11 @@
   //   run(state, settings, rng, ctx) -> string?   — mutates shared state, returns info text
   //   draw(g, state, ctx)                         — renders its layer in map coordinates
   //   defaultVisible (optional, default true)     — whether its layer is drawn initially
+  //   zIndex (optional, default: step position)   — drawing order of its layer
   const STEPS = [
     window.PointsStep,
-    window.VoronoiStep
+    window.VoronoiStep,
+    window.AltitudeStep
   ];
 
   const els = {
@@ -221,8 +223,11 @@
     g.setTransform(els.canvas.width / MAP_W, 0, 0, els.canvas.height / MAP_H, 0, 0);
     g.fillStyle = '#efe4c8';
     g.fillRect(0, 0, MAP_W, MAP_H);
-    for (const step of STEPS) {
-      if (config.visible[step.id]) step.draw(g, state, ctx);
+    const layers = STEPS
+      .map((step, i) => ({ step: step, z: step.zIndex !== undefined ? step.zIndex : i }))
+      .sort((a, b) => a.z - b.z);
+    for (const l of layers) {
+      if (config.visible[l.step.id]) l.step.draw(g, state, ctx);
     }
   }
 
