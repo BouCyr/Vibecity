@@ -128,6 +128,8 @@
           { value: 'recompute', label: 'Recompute from coast and rivers' }
         ]
       },
+      { key: 'meanders', label: 'Meanders per course', type: 'range', min: 0, max: 10, step: 1, default: 5 },
+      { key: 'meanderCandidates', label: 'Meander candidates', type: 'range', min: 1, max: 10, step: 1, default: 3 },
       { key: 'firstConfluence', label: 'First confluence from the mouth (px)', type: 'range', min: 0, max: 800, step: 10, default: 200 },
       { key: 'confluenceGap', label: 'Gap between confluences (px)', type: 'range', min: 0, max: 400, step: 10, default: 100 },
       { key: 'fleuveWidth', label: 'Fleuve width (px)', type: 'range', min: 4, max: 60, step: 1, default: 20 },
@@ -253,6 +255,70 @@
         return side !== null && side !== exitSide;
       };
 
+      /**
+       * Shortest path (px) from a to b along which D strictly increases, its inner
+       * nodes avoiding `blocked` and the map border (and nodes joined to it).
+       * Returns node ids a → b, or null.
+       */
+      const nearBorder = (v) => toBorder(v) || adj[v].some(toBorder);
+      const shortestClimb = (a, b, D, blocked) => {
+        const dist = new Map([[a, 0]]), prev = new Map();
+        const heap = new Heap();
+        heap.push(0, a);
+        while (heap.a.length) {
+          const [d, u] = heap.pop();
+          if (d > dist.get(u)) continue;
+          if (u === b) break;
+          for (const v of adj[u]) {
+            if (!(D[v] > D[u] + 1e-9)) continue;
+            if (v !== b && (!(D[v] < D[b]) || blocked.has(v) || nearBorder(v))) continue;
+            const nd = d + len(u, v);
+            if (!dist.has(v) || nd < dist.get(v) - 1e-9) { dist.set(v, nd); prev.set(v, u); heap.push(nd, v); }
+          }
+        }
+        if (!dist.has(b)) return null;
+        const out = [b];
+        while (out[out.length - 1] !== a) out.push(prev.get(out[out.length - 1]));
+        return out.reverse();
+      };
+
+      /**
+       * Meanders: on a course (node ids source → start, as the climbs return
+       * them), up to `meanders` times: draw `meanderCandidates` nodes at random
+       * more than 5 edges and 150 px (along the course) after the reference
+       * (first the start: mouth or junction), keep the one nearest to the start,
+       * and replace the stretch from 3 edges before it to 3 edges after it by the
+       * shortest climbing path that goes round it (2 edges if there is none).
+       * The next draw starts at the upstream end of the detour (or at the point
+       * if there was no detour). `ok(path)` can refuse a detour.
+       */
+      const addMeanders = (course, D, ok) => {
+        let p = course.slice().reverse(); // start → source
+        let ref = 0, made = 0;
+        for (let m = 0; m < s.meanders; m++) {
+          const arc = [0];
+          for (let i = 1; i < p.length; i++) arc.push(arc[i - 1] + len(p[i - 1], p[i]));
+          const cands = [];
+          for (let i = ref + 6; i + 3 < p.length; i++) if (arc[i] - arc[ref] > 150) cands.push(i);
+          if (!cands.length) break;
+          let i = Infinity;
+          for (let c = 0; c < s.meanderCandidates && cands.length; c++) i = Math.min(i, cands.splice(rng.int(0, cands.length - 1), 1)[0]);
+          const blocked = new Set(p);
+          for (const r of state.rivers) for (const v of r.nodes) blocked.add(v);
+          let next = null;
+          for (const g of [3, 2]) {
+            const detour = shortestClimb(p[i - g], p[i + g], D, blocked);
+            if (!detour) continue;
+            const np = p.slice(0, i - g).concat(detour, p.slice(i + g + 1));
+            if (ok && !ok(np.slice().reverse())) continue;
+            next = { p: np, ref: i - g + detour.length - 1 };
+            break;
+          }
+          if (next) { p = next.p; ref = next.ref; made++; } else ref = i;
+        }
+        return { path: p.reverse(), made: made };
+      };
+
       // Fleuve: mouth = coast node nearest to the map center; if no course climbs
       // from it to a map edge, the next coast nodes by distance to the center.
       const center = (i) => Math.hypot(nodes[i].x - W / 2, nodes[i].y - H / 2);
@@ -264,6 +330,8 @@
         if (fPath) { mouth = m; break; }
       }
       if (!fPath) return 'no watercourse (no land path from the coast to a map edge)';
+      const fMeanders = addMeanders(fPath, Dcoast, null);
+      fPath = fMeanders.path;
       const fleuveSide = sideOf(nodes[fPath[0]], W, H);
       state.rivers.push({ kind: 'fleuve', side: fleuveSide, nodes: fPath, joins: null, mouth: mouth });
 
@@ -284,7 +352,25 @@
         for (let i = 0; i + 1 < path.length; i++) l += len(path[i], path[i + 1]);
         return l;
       };
+      /**
+       * Confluence angle at fleuve index k with the tributary points `pts`
+       * (source → junction), or null if out of limits. Worst angles over the
+       * smoothing radii step 8 may use (junction kept in place): the widest at
+       * 120 px, the narrowest at 40, 80 and 120 px. Margins of 5°: step 8 splits
+       * the courses differently and may change the angle a little.
+       */
+      const confluenceAngle = (k, pts) => {
+        let angle = 0, narrowest = 180;
+        for (const r of CONFLUENCE_CHECK_RADII) {
+          const f2 = r ? smoothPolyline(fPts.slice(0, k + 1), false, r) : fPts.slice(0, k + 1);
+          const t2 = r ? smoothPolyline(pts, false, r) : pts;
+          angle = Math.max(angle, upstreamAngle(f2, f2.length - 1, t2, t2.length - 1));
+          for (const sc of MIN_ANGLE_SCALES) narrowest = Math.min(narrowest, upstreamAngle(f2, f2.length - 1, t2, t2.length - 1, sc));
+        }
+        return angle <= MAX_CONFLUENCE_ANGLE - 5 && narrowest >= MIN_CONFLUENCE_ANGLE + 5 ? angle : null;
+      };
       const notes = [];
+      if (fMeanders.made) notes.push('fleuve: ' + fMeanders.made + ' meander(s)');
       const junctionArcs = [];
       let lastBank = 0;
       for (let t = 1; t < count; t++) {
@@ -302,27 +388,23 @@
           const pts = path.map((v) => nodes[v]);
           const bank = bankAt(k, pointUpstream(pts, pts.length - 1, CONFLUENCE_SCALE));
           if (lastBank && bank !== -lastBank) continue;
-          // Worst angles over the smoothing radii step 7 may use (junction kept in
-          // place): the widest at 120 px, the narrowest at 40, 80 and 120 px.
-          let angle = 0, narrowest = 180;
-          for (const r of CONFLUENCE_CHECK_RADII) {
-            const f2 = r ? smoothPolyline(fPts.slice(0, k + 1), false, r) : fPts.slice(0, k + 1);
-            const t2 = r ? smoothPolyline(pts, false, r) : pts;
-            angle = Math.max(angle, upstreamAngle(f2, f2.length - 1, t2, t2.length - 1));
-            for (const sc of MIN_ANGLE_SCALES) narrowest = Math.min(narrowest, upstreamAngle(f2, f2.length - 1, t2, t2.length - 1, sc));
-          }
-          // Margins: step 7 splits the courses differently and may lower its radius.
-          if (angle <= MAX_CONFLUENCE_ANGLE - 5 && narrowest >= MIN_CONFLUENCE_ANGLE + 5) found = { path: path, k: k, angle: angle, bank: bank, length: length };
+          const angle = confluenceAngle(k, pts);
+          if (angle !== null) found = { path: path, k: k, angle: angle, bank: bank, length: length };
         }
         if (!found) {
           notes.push('river ' + t + ' skipped: no confluence between ' + MIN_CONFLUENCE_ANGLE + '° and ' + MAX_CONFLUENCE_ANGLE + '°' + (lastBank ? ' on the other bank' : ''));
           break;
         }
+        // Meanders, as long as the confluence stays within the angle limits.
+        const tm = addMeanders(found.path, D, (path) => confluenceAngle(found.k, path.map((v) => nodes[v])) !== null);
+        found.path = tm.path;
+        found.length = pathLength(found.path);
+        found.angle = confluenceAngle(found.k, found.path.map((v) => nodes[v]));
         const join = found.path[found.path.length - 1];
         state.rivers.push({ kind: 'river', side: sideOf(nodes[found.path[0]], W, H), nodes: found.path, joins: 0, mouth: join });
         notes.push('river from ' + state.rivers[state.rivers.length - 1].side + ', ' + Math.round(found.length) + ' px, joins ' +
           Math.round(fromMouth[found.k]) + ' px upstream of the mouth, ' + (found.bank > 0 ? 'right' : 'left') + ' bank, ' +
-          Math.round(found.angle) + '°');
+          Math.round(found.angle) + '°' + (tm.made ? ', ' + tm.made + ' meander(s)' : ''));
         junctionArcs.push(fromMouth[found.k]);
         lastBank = found.bank;
       }
