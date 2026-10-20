@@ -80,6 +80,8 @@
     // Uses the cell polygon (which follows the smoothed coast once step 6 ran)
     // and its per-point altitudes when available.
     draw(g, state) {
+      // Once the altitude curve step has run, altitudes are in metres.
+      const scale = state.altitudeMax || 1;
       g.lineWidth = 1;
       g.lineJoin = 'round';
       for (const c of state.cells) {
@@ -88,7 +90,7 @@
         for (let k = 0; k < poly.length; k++) {
           const k2 = (k + 1) % poly.length;
           const a = poly[k], b = poly[k2];
-          const col = rampColor((c.altitude + alt[k] + alt[k2]) / 3);
+          const col = rampColor((c.altitude + alt[k] + alt[k2]) / 3 / scale);
           g.fillStyle = col;
           g.strokeStyle = col;
           g.beginPath();

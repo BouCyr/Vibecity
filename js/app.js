@@ -19,7 +19,8 @@
     window.ShortEdgesStep,
     window.RiversStep,
     window.CoastStep,
-    window.RiverCellsStep
+    window.RiverCellsStep,
+    window.ReliefStep
   ];
 
   const els = {
@@ -46,7 +47,8 @@
     for (const step of STEPS) {
       config.visible[step.id] = step.defaultVisible !== false;
       config.steps[step.id] = {};
-      for (const s of step.settings) config.steps[step.id][s.key] = s.default;
+      // Copied, so that editing an array value never changes the default.
+      for (const s of step.settings) config.steps[step.id][s.key] = JSON.parse(JSON.stringify(s.default));
     }
   }
   resetToDefaults();
@@ -63,6 +65,7 @@
       for (const s of step.settings) {
         if (src[s.key] === undefined) continue;
         if (s.type === 'toggles' && !Array.isArray(src[s.key])) continue;
+        if (s.type === 'curve' && !window.validCurve(src[s.key])) continue;
         config.steps[step.id][s.key] = src[s.key];
       }
     }
@@ -194,6 +197,9 @@
         input.appendChild(item);
       }
       label.htmlFor = id + '-' + s.options[0].value;
+    } else if (s.type === 'curve') {
+      input = buildCurveEditor(s, values, id);
+      label.htmlFor = id + '-canvas';
     } else if (s.type === 'range') {
       const out = document.createElement('output');
       out.textContent = values[s.key];
@@ -218,6 +224,114 @@
     }
     if (!input.id) input.id = id;
     wrap.appendChild(input);
+    return wrap;
+  }
+
+  /**
+   * Editor for a strictly increasing curve from (0, 0) to (1, 1): the value is
+   * the list of intermediate points [[x, y], …]. Drag a point to move it (kept
+   * strictly between its neighbours in x and y); double-click empty space to
+   * add a point, a point to remove it. The map is regenerated on release.
+   */
+  function buildCurveEditor(s, values, id) {
+    const W = 240, H = 160, PAD = 10;
+    const wrap = document.createElement('div');
+    wrap.className = 'curve-editor';
+    const cv = document.createElement('canvas');
+    cv.id = id + '-canvas';
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = W * dpr; cv.height = H * dpr;
+    cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    cv.title = 'Drag a point to move it; double-click to add or remove a point';
+    wrap.appendChild(cv);
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.textContent = 'Reset curve';
+    wrap.appendChild(reset);
+
+    const toPx = (p) => ({ x: PAD + p[0] * (W - 2 * PAD), y: H - PAD - p[1] * (H - 2 * PAD) });
+    const fromEvent = (e) => {
+      const r = cv.getBoundingClientRect();
+      return [((e.clientX - r.left) * (W / r.width) - PAD) / (W - 2 * PAD), (H - PAD - (e.clientY - r.top) * (H / r.height)) / (H - 2 * PAD)];
+    };
+    const pts = () => values[s.key];
+    const MIN_GAP = 0.01;
+
+    function paint() {
+      const g = cv.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.fillStyle = '#fffdf7';
+      g.fillRect(0, 0, W, H);
+      g.strokeStyle = '#e6d9bb';
+      g.lineWidth = 1;
+      for (let k = 0; k <= 4; k++) {
+        const a = toPx([k / 4, 0]), b = toPx([k / 4, 1]), c = toPx([0, k / 4]), d = toPx([1, k / 4]);
+        g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.moveTo(c.x, c.y); g.lineTo(d.x, d.y); g.stroke();
+      }
+      const f = window.curveFunction(pts());
+      g.strokeStyle = '#8b3a1e';
+      g.lineWidth = 2;
+      g.beginPath();
+      for (let k = 0; k <= 100; k++) {
+        const p = toPx([k / 100, f(k / 100)]);
+        if (k) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y);
+      }
+      g.stroke();
+      [[0, 0]].concat(pts(), [[1, 1]]).forEach((q, i, all) => {
+        const p = toPx(q), fixed = i === 0 || i === all.length - 1;
+        g.fillStyle = fixed ? '#b9a98a' : '#8b3a1e';
+        g.beginPath(); g.arc(p.x, p.y, fixed ? 3.5 : 5, 0, Math.PI * 2); g.fill();
+      });
+    }
+
+    const hit = (e) => {
+      const r = cv.getBoundingClientRect(), sx = W / r.width;
+      const x = (e.clientX - r.left) * sx, y = (e.clientY - r.top) * sx;
+      let best = -1, bd = 9;
+      pts().forEach((q, i) => {
+        const p = toPx(q), d = Math.hypot(p.x - x, p.y - y);
+        if (d < bd) { bd = d; best = i; }
+      });
+      return best;
+    };
+
+    let drag = -1;
+    cv.addEventListener('pointerdown', (e) => {
+      drag = hit(e);
+      if (drag >= 0) { cv.setPointerCapture(e.pointerId); e.preventDefault(); }
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (drag < 0) return;
+      const P = pts(), [x, y] = fromEvent(e);
+      const lo = drag ? P[drag - 1] : [0, 0], hi = drag + 1 < P.length ? P[drag + 1] : [1, 1];
+      P[drag] = [
+        Math.round(Math.min(hi[0] - MIN_GAP, Math.max(lo[0] + MIN_GAP, x)) * 1000) / 1000,
+        Math.round(Math.min(hi[1] - MIN_GAP, Math.max(lo[1] + MIN_GAP, y)) * 1000) / 1000
+      ];
+      paint();
+    });
+    const release = () => { if (drag >= 0) { drag = -1; changed(); } };
+    cv.addEventListener('pointerup', release);
+    cv.addEventListener('pointercancel', release);
+    cv.addEventListener('dblclick', (e) => {
+      const i = hit(e), P = pts();
+      if (i >= 0) {
+        P.splice(i, 1);
+      } else {
+        const [x, y] = fromEvent(e);
+        const next = P.concat([[Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]]).sort((a, b) => a[0] - b[0]);
+        if (!window.validCurve(next)) return;
+        values[s.key] = next;
+      }
+      paint();
+      changed();
+    });
+    reset.addEventListener('click', () => {
+      values[s.key] = JSON.parse(JSON.stringify(s.default));
+      paint();
+      changed();
+    });
+    paint();
     return wrap;
   }
 
