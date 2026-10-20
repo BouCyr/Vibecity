@@ -21,6 +21,8 @@ Procedural generator for the plan of a fictional medieval city. Plain HTML/JS, n
 
 10. **Altitude curve** — last step: every altitude computed so far (cells, nodes, per-point polygon altitudes, water cells) is normalized to [0, 1], mapped through the *Altitude curve*, then multiplied by *Maximum altitude* (10–3000 m, default 300): altitudes are in metres from here on (sea at 0 m). The curve goes from (0, 0) to (1, 1) and is strictly increasing (monotone cubic interpolation through its 5 movable points); in its editor, drag one of the 5 points to move it (it stays strictly between its neighbours); *Reset curve* restores the straight line. The Altitude layer (step 3) shows the result.
 
+11. **3D view** — optional display mode (WebGL, no library): tick its box and the map is shown as a relief instead of the 2D layers. Each cell is a fan of triangles from its centre to its polygon points at their altitudes; land coloured like the Altitude layer, water (sea, river cells) blue; the sea is flat at 0 m and vertical cliffs close the gap where the coast is higher. Lighting: ambient + diffuse (Lambert, smooth normals) from a directional light. Settings: *Vertical scale* (px per metre, default 1), *Ambient light* (0.35), *Light direction* (azimuth, 0 = north) and *Light elevation*. Drag to orbit, right- or shift-drag to pan, wheel (or pinch) to zoom.
+
 Each step's checkbox toggles whether its layer is drawn.
 
 Setting types: `range`, `select`, `toggles` (array of selected values), `curve` (array of intermediate `[x, y]` points of an increasing curve). Add a step by creating `js/steps/<name>.js` exposing `{ id, title, settings, run(state, settings, rng, ctx), draw(g, state, ctx), defaultVisible?, zIndex? }` and adding it to `STEPS` in `js/app.js`.

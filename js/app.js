@@ -20,7 +20,8 @@
     window.RiversStep,
     window.CoastStep,
     window.RiverCellsStep,
-    window.ReliefStep
+    window.ReliefStep,
+    window.View3DStep
   ];
 
   const els = {
@@ -35,7 +36,8 @@
     steps: document.getElementById('steps'),
     status: document.getElementById('status'),
     stage: document.getElementById('stage'),
-    canvas: document.getElementById('map')
+    canvas: document.getElementById('map'),
+    canvas3d: document.getElementById('map3d')
   };
 
   // ---------- Config (seed + per-step settings), persisted in the URL hash ----------
@@ -421,6 +423,15 @@
 
   function draw() {
     if (!state) return;
+    // A step with `view3d` replaces the 2D map while its layer is shown.
+    const v3 = STEPS.find((st) => st.view3d && config.visible[st.id]);
+    els.canvas.style.display = v3 ? 'none' : '';
+    els.canvas3d.style.display = v3 ? '' : 'none';
+    if (v3) {
+      const err = window.View3D.show(els.canvas3d, state, config.steps[v3.id]);
+      if (err) infoEls[v3.id].textContent = err;
+      return;
+    }
     const g = els.canvas.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, els.canvas.width, els.canvas.height);

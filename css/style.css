@@ -155,6 +155,14 @@ input[type=text], input[type=number], select {
   padding: 12px;
 }
 
+#map3d {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 4px 24px rgba(0,0,0,.45);
+}
+
 #map {
   display: block;
   background: #efe4c8;

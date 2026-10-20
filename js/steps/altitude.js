@@ -18,13 +18,18 @@
     [1.0, 120, 96, 78]
   ];
 
-  function rampColor(a) {
+  /** Ramp colour of altitude a in [0, 1] as [r, g, b] (0–255). */
+  function rampRGB(a) {
     let k = 1;
     while (k < RAMP.length - 1 && a > RAMP[k][0]) k++;
     const lo = RAMP[k - 1], hi = RAMP[k];
     const t = Math.max(0, Math.min(1, (a - lo[0]) / (hi[0] - lo[0])));
-    const c = (i) => Math.round(lo[i] + (hi[i] - lo[i]) * t);
-    return 'rgb(' + c(1) + ',' + c(2) + ',' + c(3) + ')';
+    return [1, 2, 3].map((i) => Math.round(lo[i] + (hi[i] - lo[i]) * t));
+  }
+  global.altitudeRampRGB = rampRGB;
+
+  function rampColor(a) {
+    return 'rgb(' + rampRGB(a).join(',') + ')';
   }
 
   const settings = [];
