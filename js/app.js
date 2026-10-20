@@ -65,7 +65,7 @@
       for (const s of step.settings) {
         if (src[s.key] === undefined) continue;
         if (s.type === 'toggles' && !Array.isArray(src[s.key])) continue;
-        if (s.type === 'curve' && !window.validCurve(src[s.key])) continue;
+        if (s.type === 'curve' && !(window.validCurve(src[s.key]) && src[s.key].length === s.default.length)) continue;
         config.steps[step.id][s.key] = src[s.key];
       }
     }
@@ -229,12 +229,12 @@
 
   /**
    * Editor for a strictly increasing curve from (0, 0) to (1, 1): the value is
-   * the list of intermediate points [[x, y], …]. Drag a point to move it (kept
-   * strictly between its neighbours in x and y); double-click empty space to
-   * add a point, a point to remove it. The map is regenerated on release.
+   * the list of intermediate points [[x, y], …] (a fixed number of them). Drag
+   * a point to move it (kept strictly between its neighbours in x and y); the
+   * map is regenerated on release.
    */
   function buildCurveEditor(s, values, id) {
-    const W = 240, H = 160, PAD = 10;
+    const W = 252, H = 168, PAD = 10;
     const wrap = document.createElement('div');
     wrap.className = 'curve-editor';
     const cv = document.createElement('canvas');
@@ -242,7 +242,7 @@
     const dpr = window.devicePixelRatio || 1;
     cv.width = W * dpr; cv.height = H * dpr;
     cv.style.width = W + 'px'; cv.style.height = H + 'px';
-    cv.title = 'Drag a point to move it; double-click to add or remove a point';
+    cv.title = 'Drag a point to move it';
     wrap.appendChild(cv);
     const reset = document.createElement('button');
     reset.type = 'button';
@@ -313,19 +313,6 @@
     const release = () => { if (drag >= 0) { drag = -1; changed(); } };
     cv.addEventListener('pointerup', release);
     cv.addEventListener('pointercancel', release);
-    cv.addEventListener('dblclick', (e) => {
-      const i = hit(e), P = pts();
-      if (i >= 0) {
-        P.splice(i, 1);
-      } else {
-        const [x, y] = fromEvent(e);
-        const next = P.concat([[Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]]).sort((a, b) => a[0] - b[0]);
-        if (!window.validCurve(next)) return;
-        values[s.key] = next;
-      }
-      paint();
-      changed();
-    });
     reset.addEventListener('click', () => {
       values[s.key] = JSON.parse(JSON.stringify(s.default));
       paint();

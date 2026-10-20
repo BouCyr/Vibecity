@@ -55,7 +55,7 @@
     // Nothing of its own to draw: the Altitude layer shows the result.
     defaultVisible: false,
     settings: [
-      { key: 'curve', label: 'Altitude curve', type: 'curve', default: [[0.25, 0.25], [0.5, 0.5], [0.75, 0.75]] },
+      { key: 'curve', label: 'Altitude curve', type: 'curve', default: [[0.167, 0.167], [0.333, 0.333], [0.5, 0.5], [0.667, 0.667], [0.833, 0.833]] },
       { key: 'maxAltitude', label: 'Maximum altitude (m)', type: 'range', min: 10, max: 3000, step: 10, default: 300 }
     ],
 
