@@ -22,3 +22,5 @@ Each step's checkbox toggles whether its layer is drawn.
 Add a step by creating `js/steps/<name>.js` exposing `{ id, title, settings, run(state, settings, rng, ctx), draw(g, state, ctx), defaultVisible?, zIndex? }` and adding it to `STEPS` in `js/app.js`.
 
 To get a single self-contained HTML file: `python3 tools/build-single.py vibecity.html`.
+
+To fetch reference documents (old city plans…) from Gallica (BnF) through its IIIF APIs: `python3 tools/gallica-iiif.py {info|manifest|image|tiles} ARK` (standard library only; `--stitch` uses Pillow). See the script's docstring for options. Gallica content is free for non-commercial reuse with attribution ("Source gallica.bnf.fr / BnF"); the script spaces its requests (`--delay`, 1 s by default) and backs off on 429/5xx errors.
