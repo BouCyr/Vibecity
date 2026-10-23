@@ -18,13 +18,18 @@
     [1.0, 120, 96, 78]
   ];
 
-  function rampColor(a) {
+  /** Ramp colour of altitude a in [0, 1] as [r, g, b] (0–255). */
+  function rampRGB(a) {
     let k = 1;
     while (k < RAMP.length - 1 && a > RAMP[k][0]) k++;
     const lo = RAMP[k - 1], hi = RAMP[k];
     const t = Math.max(0, Math.min(1, (a - lo[0]) / (hi[0] - lo[0])));
-    const c = (i) => Math.round(lo[i] + (hi[i] - lo[i]) * t);
-    return 'rgb(' + c(1) + ',' + c(2) + ',' + c(3) + ')';
+    return [1, 2, 3].map((i) => Math.round(lo[i] + (hi[i] - lo[i]) * t));
+  }
+  global.altitudeRampRGB = rampRGB;
+
+  function rampColor(a) {
+    return 'rgb(' + rampRGB(a).join(',') + ')';
   }
 
   const settings = [];
@@ -80,6 +85,8 @@
     // Uses the cell polygon (which follows the smoothed coast once step 6 ran)
     // and its per-point altitudes when available.
     draw(g, state) {
+      // Once the altitude curve step has run, altitudes are in metres.
+      const scale = state.altitudeMax || 1;
       g.lineWidth = 1;
       g.lineJoin = 'round';
       for (const c of state.cells) {
@@ -88,7 +95,7 @@
         for (let k = 0; k < poly.length; k++) {
           const k2 = (k + 1) % poly.length;
           const a = poly[k], b = poly[k2];
-          const col = rampColor((c.altitude + alt[k] + alt[k2]) / 3);
+          const col = rampColor((c.altitude + alt[k] + alt[k2]) / 3 / scale);
           g.fillStyle = col;
           g.strokeStyle = col;
           g.beginPath();

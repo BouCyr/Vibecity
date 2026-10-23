@@ -268,16 +268,20 @@
 
       /**
        * Distance rule between courses: an edge u → v is allowed if v is at least
-       * `minCourseDistance` px from the courses already built, or, near them
-       * (the start of a tributary, at its junction), farther from them than u:
-       * the course moves away until it is far enough, then never comes back.
+       * `minCourseDistance` px from the courses already built and from the coast,
+       * or, near them (the start of a course, at its mouth or junction), farther
+       * from them than u: the course moves away until it is far enough, then
+       * never comes back.
        * Returns null when there is nothing to keep away from.
        */
       const awayFrom = (courses) => {
         const minD = s.minCourseDistance === undefined ? 80 : s.minCourseDistance;
-        if (!minD || !courses.length) return null;
+        if (!minD) return null;
         const segs = [];
         for (const r of courses) for (let k = 0; k + 1 < r.nodes.length; k++) segs.push([nodes[r.nodes[k]], nodes[r.nodes[k + 1]]]);
+        // The coast too: a course does not run along the sea (it leaves its mouth).
+        for (const [a, b] of state.coastline || []) segs.push([nodes[a], nodes[b]]);
+        if (!segs.length) return null;
         const cache = new Float64Array(nodes.length).fill(-1);
         const dO = (v) => {
           if (cache[v] < 0) {

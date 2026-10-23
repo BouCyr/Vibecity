@@ -577,7 +577,10 @@
         snapBanks();
 
         // Water cells: one per course edge of the rivers step, a triangle per confluence.
+        // Also, per course and centre-line sample, the nodes standing for it on
+        // the banks (its copies, and the mouth point): the water level is set on them.
         const water = [];
+        const sampleIds = courses.map((c) => c.ids.map(() => new Set()));
         courses.forEach((c, ci) => {
           const r = state.rivers[ci];
           for (let k = 0; k + 1 < r.nodes.length; k++) {
@@ -590,7 +593,10 @@
               const v = c.ids[i];
               A.push(copyOf.get(v + '|' + bankCell(c, seg, true)));
               B.push(copyOf.get(v + '|' + bankCell(c, seg, false)));
+              for (const id of [A[A.length - 1], B[B.length - 1]]) if (id !== undefined) sampleIds[ci][i].add(id);
             }
+            if (mouths.has(c.ids[s1])) sampleIds[ci][s1].add(c.ids[s1]);
+            if (mouths.has(c.ids[s0])) sampleIds[ci][s0].add(c.ids[s0]);
             const raw = A.slice();
             if (mouths.has(c.ids[s1])) raw.push(c.ids[s1]);
             for (let i = B.length - 1; i >= 0; i--) raw.push(B[i]);
@@ -602,7 +608,7 @@
         for (const j of junctions) water.push({ river: state.rivers.findIndex((r) => r.nodes.indexOf(j.v) >= 0), junction: true, ring: j.copies.slice() });
 
         for (const e of extra) pos.push({ x: e.x, y: e.y });
-        return { pos: pos, extra: extra, rings: rings, water: water, junctions: junctions };
+        return { pos: pos, extra: extra, rings: rings, water: water, junctions: junctions, sampleIds: sampleIds };
       };
 
       // Validate (every ring keeps the winding and does not cross itself, the
@@ -690,7 +696,11 @@
         if (w.river >= 0) state.rivers[w.river].cells.push(live.length);
         live.push(cell);
       }
-      state.rivers.forEach((r, ci) => { r.centerline = courses[ci].ids.map((id) => ({ x: nodes[id].x, y: nodes[id].y })); });
+      state.rivers.forEach((r, ci) => {
+        r.centerline = courses[ci].ids.map((id) => ({ x: nodes[id].x, y: nodes[id].y }));
+        // Node ids on the banks for each centre-line sample, source → mouth/junction.
+        r.sampleNodes = res.sampleIds[ci].map((set) => [...set]);
+      });
       live.forEach((c, ci) => {
         for (const id of c.nodes) finalNodes[id].cells.push(ci);
         c.poly = c.nodes.map((id) => ({ x: finalNodes[id].x, y: finalNodes[id].y }));

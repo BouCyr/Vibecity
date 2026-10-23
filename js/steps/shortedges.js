@@ -197,6 +197,14 @@
       }
       for (const c of cellsNow) c.neighbors.sort((x, y) => x - y);
 
+      // Merged border edges can leave a land cell touching the map border by a
+      // single point between sea cells: it becomes sea. Small islands (up to 3
+      // cells, as in the sea clean-up) that merges or this leave become sea too.
+      const seaChanges = state.seaChanges || (state.seaChanges = []);
+      const pinches = removeBorderPinches(state, W, H, seaChanges);
+      const islands = removeSmallIslands(cellsNow, 3, seaChanges);
+      for (const c of cellsNow) if (c.sea) c.altitude = 0;
+
       updateSeaFlags(state);
       for (const n of state.nodes) if (n.sea) n.altitude = 0;
       state.mergedPoints = merged;
@@ -207,7 +215,9 @@
         shortest = Math.min(shortest, Math.hypot(kept[a].x - kept[b].x, kept[a].y - kept[b].y));
       }
       return merged.length + ' edges removed, ' + removedCells + ' small triangle cells removed, ' + kept.length +
-        ' nodes left, shortest edge ' + shortest.toFixed(1) + ' px';
+        ' nodes left, shortest edge ' + shortest.toFixed(1) + ' px' +
+        (pinches ? '; ' + pinches + ' land cells touching the border by one point turned to sea' : '') +
+        (islands ? '; ' + islands + ' small islands removed' : '');
     },
 
     // Marks the merged nodes.

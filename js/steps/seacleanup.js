@@ -4,7 +4,7 @@
 //     of a corner that is not between two sea fronts.
 //  2. Sea areas that reach no sea front (inland seas) are filled: they become land,
 //     raised to the lowest land altitude around them.
-//  3. Islands made of a single land cell become sea.
+//  3. Small islands (up to 3 land cells) become sea.
 // Sea cells (and nodes surrounded by sea) then lose their altitude (set to 0).
 (function (global) {
   'use strict';
@@ -47,6 +47,51 @@
     return groups;
   }
 
+  const SMALL_ISLAND = 3;
+
+  /**
+   * Islands (land groups through shared edges) of up to `maxCells` cells become
+   * sea, as long as some other land exists. Changes go to `changes`.
+   */
+  function removeSmallIslands(cells, maxCells, changes) {
+    const groups = components(cells, (c) => !c.sea);
+    if (groups.length < 2) return 0;
+    let removed = 0;
+    for (const group of groups) {
+      if (group.length > maxCells) continue;
+      for (const i of group) { cells[i].sea = true; changes.push({ cell: i, toSea: true }); }
+      removed++;
+    }
+    return removed;
+  }
+
+  /**
+   * A land cell touching the map border by a single point, every other cell at
+   * that point being sea, becomes sea (repeated until there is none).
+   */
+  function removeBorderPinches(state, w, h, changes) {
+    const onBorder = (n) => n.x <= EPS || n.y <= EPS || n.x >= w - EPS || n.y >= h - EPS;
+    const cellsAt = state.nodes.map(() => []);
+    state.cells.forEach((c, i) => c.nodes.forEach((v) => cellsAt[v].push(i)));
+    let removed = 0, again = true;
+    while (again) {
+      again = false;
+      state.cells.forEach((c, i) => {
+        if (c.sea) return;
+        const pts = c.nodes.filter((v) => onBorder(state.nodes[v]));
+        if (pts.length !== 1) return;
+        if (!cellsAt[pts[0]].every((j) => j === i || state.cells[j].sea)) return;
+        c.sea = true;
+        changes.push({ cell: i, toSea: true });
+        removed++;
+        again = true;
+      });
+    }
+    return removed;
+  }
+  global.removeSmallIslands = removeSmallIslands;
+  global.removeBorderPinches = removeBorderPinches;
+
   global.SeaCleanupStep = {
     id: 'seaCleanup',
     title: 'Sea clean-up',
@@ -57,7 +102,7 @@
         options: [
           { value: 'edges', label: 'Front edges', title: 'Land touching a sea-front edge becomes sea, except next to a land corner' },
           { value: 'inland', label: 'Inland seas', title: 'Sea areas reaching no sea front are filled' },
-          { value: 'islands', label: 'Lone islands', title: 'Islands of a single cell become sea' }
+          { value: 'islands', label: 'Small islands', title: 'Islands of up to 3 cells become sea' }
         ]
       }
     ],
@@ -127,16 +172,10 @@
         });
       }
 
-      // 3. Single-cell islands.
-      let islands = 0;
-      if (passes.indexOf('islands') >= 0) {
-        for (const group of components(cells, (c) => !c.sea)) {
-          if (group.length !== 1) continue;
-          cells[group[0]].sea = true;
-          changes.push({ cell: group[0], toSea: true });
-          islands++;
-        }
-      }
+      // 3. Small islands.
+      let islands = 0, islandCells = changes.length;
+      if (passes.indexOf('islands') >= 0) islands = removeSmallIslands(cells, SMALL_ISLAND, changes);
+      islandCells = changes.length - islandCells;
 
       updateSeaFlags(state);
       // Sea altitude is not used further.
@@ -147,7 +186,7 @@
       const toSea = changes.filter((ch) => ch.toSea).length;
       let seaCount = 0;
       for (const c of cells) if (c.sea) seaCount++;
-      return (toSea - islands) + ' edge cells to sea, ' + islands + ' lone islands removed, ' + filled + ' inland seas filled (' + (changes.length - toSea) +
+      return (toSea - islandCells) + ' edge cells to sea, ' + islands + ' small islands removed, ' + filled + ' inland seas filled (' + (changes.length - toSea) +
         ' cells); ' + Math.round((100 * seaCount) / Math.max(1, cells.length)) + '% sea';
     },
 
