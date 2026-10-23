@@ -4,11 +4,16 @@
 Standard library only (Pillow, if installed, is used to stitch tiles into one image).
 
 Usage:
+  python3 tools/gallica-iiif.py search   WORDS... [--type carte] [--max N] [--start K]
+                                             [--download] [--size S] [-o DIR]
   python3 tools/gallica-iiif.py info     ARK [--page N]
   python3 tools/gallica-iiif.py manifest ARK [--save FILE]
   python3 tools/gallica-iiif.py image    ARK [--pages 1,3-5|all] [--region R] [--size S]
                                              [--rotation D] [--quality Q] [--format F] [-o DIR]
   python3 tools/gallica-iiif.py tiles    ARK [--page N] [--scale K] [-o DIR] [--stitch]
+
+search queries the SRU API (https://gallica.bnf.fr/SRU) and lists matching documents with their
+ARK; --download also saves the first page of each result.
 
 ARK: `btv1b8490098q`, `ark:/12148/btv1b8490098q` or any Gallica URL containing it.
 
@@ -28,9 +33,12 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 
 BASE = 'https://gallica.bnf.fr/iiif'
+SRU = 'https://gallica.bnf.fr/SRU'
 USER_AGENT = 'Vibecity-gallica-iiif/1.0 (+https://github.com/BouCyr/Vibecity)'
 
 
@@ -157,6 +165,48 @@ def write(path, data):
     print('  %s (%d KB)' % (path, (len(data) + 1023) // 1024))
 
 
+def search(c, sru, words, doc_type=None, count=10, start=1):
+    """SRU search -> (total hits, [{ark, title, date, creator, type}])."""
+    query = 'gallica all "%s"' % words.replace('"', '')
+    if doc_type:
+        query += ' and dc.type all "%s"' % doc_type.replace('"', '')
+    url = sru + '?' + urllib.parse.urlencode({
+        'operation': 'searchRetrieve', 'version': '1.2', 'query': query,
+        'startRecord': start, 'maximumRecords': count})
+    root = ET.fromstring(c.get(url))
+    total = int(root.findtext('.//{*}numberOfRecords') or 0)
+    results = []
+    for rec in root.findall('.//{*}recordData'):
+        def field(name, rec=rec):
+            return [e.text.strip() for e in rec.findall('.//{*}' + name) if e.text and e.text.strip()]
+        arks = [m.group(1) for i in field('identifier') for m in [re.search(r'ark:/12148/([A-Za-z0-9]+)', i)] if m]
+        if arks:
+            results.append({'ark': arks[0], 'title': ' '.join(field('title')),
+                            'date': ', '.join(field('date')), 'creator': '; '.join(field('creator')),
+                            'type': ', '.join(field('type'))})
+    return total, results
+
+
+def cmd_search(c, a):
+    words = ' '.join(a.words)
+    total, results = search(c, a.sru, words, a.type, a.max, a.start)
+    print('%d documents for "%s"%s' % (total, words, ' (type: %s)' % a.type if a.type else ''))
+    for i, r in enumerate(results, a.start):
+        print('\n%3d. %s' % (i, r['title'][:110]))
+        print('     ark %s   %s' % (r['ark'], ' | '.join(x for x in (r['date'], r['creator'][:60]) if x)))
+        print('     %s' % r['type'][:110])
+        print('     https://gallica.bnf.fr/ark:/12148/%s' % r['ark'])
+        if a.download:
+            try:
+                quality = default_quality(c.info(r['ark'], 1))
+                write(os.path.join(a.out, '%s_f1.jpg' % r['ark']),
+                      c.get(c.image_url(r['ark'], 1, size=a.size, quality=quality)))
+            except urllib.error.HTTPError as e:
+                print('     (no image: HTTP %d)' % e.code)
+    if total > a.start + len(results) - 1:
+        print('\nMore: --start %d' % (a.start + len(results)))
+
+
 def cmd_info(c, a):
     info = c.info(a.ark, a.page)
     if a.json:
@@ -241,8 +291,19 @@ def stitch(paths, tw, th, w, h, dest):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     p.add_argument('--base', default=BASE, help='IIIF base URL (default %(default)s)')
+    p.add_argument('--sru', default=SRU, help='SRU search URL (default %(default)s)')
     p.add_argument('--delay', type=float, default=1.0, help='seconds between requests (default 1)')
     sub = p.add_subparsers(dest='cmd', required=True)
+
+    s = sub.add_parser('search', help='find documents by keywords (SRU)')
+    s.add_argument('words', nargs='+')
+    s.add_argument('--type', help="document type: carte, image, monographie, manuscrit, fascicule...")
+    s.add_argument('--max', type=int, default=10, help='results per page (default 10, max 50)')
+    s.add_argument('--start', type=int, default=1, help='first result (default 1)')
+    s.add_argument('--download', action='store_true', help='save the first page of each result')
+    s.add_argument('--size', default='1000,', help="image size for --download (default '1000,')")
+    s.add_argument('-o', '--out', default='gallica')
+    s.set_defaults(func=cmd_search)
 
     s = sub.add_parser('info', help='image info of one page (info.json)')
     s.add_argument('ark')
@@ -276,7 +337,8 @@ def main(argv=None):
     s.set_defaults(func=cmd_tiles)
 
     a = p.parse_args(argv)
-    a.ark = parse_ark(a.ark)
+    if a.cmd != 'search':
+        a.ark = parse_ark(a.ark)
     try:
         a.func(Client(a.base, a.delay), a)
     except urllib.error.HTTPError as e:

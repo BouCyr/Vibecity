@@ -23,4 +23,4 @@ Add a step by creating `js/steps/<name>.js` exposing `{ id, title, settings, run
 
 To get a single self-contained HTML file: `python3 tools/build-single.py vibecity.html`.
 
-To fetch reference documents (old city plans…) from Gallica (BnF) through its IIIF APIs: `python3 tools/gallica-iiif.py {info|manifest|image|tiles} ARK` (standard library only; `--stitch` uses Pillow). See the script's docstring for options. Gallica content is free for non-commercial reuse with attribution ("Source gallica.bnf.fr / BnF"); the script spaces its requests (`--delay`, 1 s by default) and backs off on 429/5xx errors.
+To fetch reference documents (old city plans…) from Gallica (BnF) through its IIIF APIs: `python3 tools/gallica-iiif.py search plan Carcassonne --type carte` to find documents by keywords, then `python3 tools/gallica-iiif.py {info|manifest|image|tiles} ARK` (standard library only; `--stitch` uses Pillow). See the script's docstring for options. Gallica content is free for non-commercial reuse with attribution ("Source gallica.bnf.fr / BnF"); the script spaces its requests (`--delay`, 1 s by default) and backs off on 429/5xx errors.
