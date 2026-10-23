@@ -16,8 +16,10 @@
     window.AltitudeStep,
     window.SeaStep,
     window.SeaCleanupStep,
+    window.ShortEdgesStep,
     window.RiversStep,
-    window.CoastStep
+    window.CoastStep,
+    window.RiverCellsStep
   ];
 
   const els = {
@@ -328,6 +330,7 @@
       .map((step, i) => ({ step: step, z: step.zIndex !== undefined ? step.zIndex : i }))
       .sort((a, b) => a.z - b.z);
     for (const l of layers) {
+      ctx.visible = config.visible;
       if (config.visible[l.step.id]) l.step.draw(g, state, ctx);
     }
   }
