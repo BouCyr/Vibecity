@@ -328,7 +328,7 @@
     els.steps.innerHTML = '';
     STEPS.forEach((step, i) => {
       const li = document.createElement('li');
-      li.className = 'step';
+      li.className = 'step closed';  // collapsed by default; click the header to open
 
       const head = document.createElement('div');
       head.className = 'step-head';

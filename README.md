@@ -2,7 +2,7 @@
 
 Procedural generator for the plan of a fictional medieval city. Plain HTML/JS, no framework, no build: open `index.html` in a browser.
 
-- Left panel: numbered, collapsible generation steps, each with its own settings.
+- Left panel: numbered generation steps, collapsed by default (click a header to open it), each with its own settings.
 - Everything is derived from the **seed** (each step gets its own seeded RNG), so the same seed + settings always give the same map.
 - Seed and settings are stored in the URL hash, so a map can be shared by URL.
 - Map is 2000×2000 units, scaled to fit the window.
