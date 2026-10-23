@@ -139,6 +139,8 @@ input[type=text], input[type=number], select {
 .step-info { margin-top: 8px; font-size: 12px; color: var(--muted); font-style: italic; }
 
 #status { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.panel-link { font-size: 13px; margin: 12px 0 0; }
+.panel-link a { color: var(--accent); }
 
 /* ---------- Stage ---------- */
 #stage {
