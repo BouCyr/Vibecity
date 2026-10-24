@@ -58,32 +58,44 @@ only milestone with nothing new to look at.
 
 ## 2. City pipeline (continuing the numbered steps; 11 is the raster fields, 12 the 3D view)
 
+Known rough edges after M2, to revisit with the urban fabric: a town hemmed
+in by water on two sides gets fewer gates (the 60° spacing); the old core
+wall, pulled towards the bank, can come out flat against it; roads keep a
+slight wiggle from the 20 m routing grid.
+
 ### Phase A — Site and terrain detail
 
-- **13. Site** ✓ — score candidate locations on the map: river bank,
+- **13. Fine terrain** ✓ — the altitude is known per cell/node (~110 m
+  apart); add fine noise octaves (metre scale) constrained by the water
+  levels so the banks stay consistent; marsh in the low ground. Produces
+  the altitude raster that every later step reads. Done:
+  `js/steps/terrain.js` (smoothed facets, 3 noise octaves, banks above
+  the nearest water, marsh patches, hillshade layer). Runs before the
+  site so that the site reads smoothed slopes.
+- **14. Site** ✓ — score candidate locations on the map: river bank,
   crossing point, confluence, defensible hill, distance to the sea, flat
   enough ground; keep the best according to a preference (river port /
   hilltop town / confluence). Output: the city centre and orientation,
   drawn on the map. Settings: preference, minimum distance to the map
   border (the countryside must fit around). Done: `js/steps/site.js`
   (candidates every 20 m scored from the rasters, heat map layer).
-- **14. Fine terrain** — the altitude is known per cell/node (~110 m
-  apart); add fine noise octaves (metre scale) constrained by the water
-  levels so the banks stay consistent; marsh in the low ground. Produces
-  the altitude raster that every later step reads.
 
 ### Phase B — Skeleton
 
-- **15. Core and walls** — a core (castrum / castle on the hill /
+- **15. Core and walls** ✓ — a core (castrum / castle on the hill /
   cathedral), then two successive walls (small Gallo-Roman one ~10 ha,
   large 13th-century one ~50–100 ha). The outline follows the terrain
   (ridges, the river as natural defence); towers at intervals; gates where
   the main roads leave. The old wall becomes an inner street/boulevard —
-  this is what gives the historical layering.
-- **16. Main roads and bridge** — incoming roads from the map borders
+  this is what gives the historical layering. Done: `js/steps/walls.js`
+  (star-shaped walls of a target area along the terrain and the banks,
+  towers, bridge gate and land gates).
+- **16. Main roads and bridge** ✓ — incoming roads from the map borders
   (towards the neighbouring towns, along the river) → gates → convergence
   on the centre (market / cathedral). Bridge placement (narrow, shallow,
-  stable banks). These axes structure everything else.
+  stable banks). These axes structure everything else. Done:
+  `js/steps/roads.js` (A* on a 20 m cost grid, bridge at the shortest
+  crossing near the bridge gate, old wall gates where the axes cross it).
 
 ### Phase C — Urban fabric
 
@@ -129,8 +141,8 @@ only milestone with nothing new to look at.
 | Milestone | Content | What becomes visible |
 |---|---|---|
 | M0 | Pan/zoom ✓, raster fields ✓ (step 11), scale constant ✓, geom.js | The existing map, zoomable, with a scale bar |
-| M1 | Site ✓ + fine terrain | The right spot, chosen automatically; metre-scale relief |
-| M2 | Walls + gates + axes + bridge | The **silhouette** of the city |
+| M1 ✓ | Fine terrain + site | The right spot, chosen automatically; metre-scale relief |
+| M2 ✓ | Walls + gates + axes + bridge | The **silhouette** of the city |
 | M3 | Blocks + streets (Voronoi reuse) | It already looks like a city plan |
 | M4 | Lots + buildings | The goal: every building |
 | M5 | Squares + monuments | Churches, cathedral, castle, market |
