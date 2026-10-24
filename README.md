@@ -27,6 +27,8 @@ Each step's checkbox toggles whether its layer is drawn.
 
 Setting types: `range`, `select`, `toggles` (array of selected values), `curve` (array of intermediate `[x, y]` points of an increasing curve). Add a step by creating `js/steps/<name>.js` exposing `{ id, title, settings, run(state, settings, rng, ctx), draw(g, state, ctx), defaultVisible?, zIndex? }` and adding it to `STEPS` in `js/app.js`.
 
+See [ROADMAP.md](ROADMAP.md) for the plan towards a city drawn building by building (site, walls, streets, lots, buildings, faubourgs, countryside).
+
 To get a single self-contained HTML file: `python3 tools/build-single.py vibecity.html`.
 
 To fetch reference documents (old city plans…) from Gallica (BnF): `python3 tools/gallica-iiif.py search plan Carcassonne --type carte`, then `python3 tools/gallica-iiif.py {info|manifest|image|tiles} ARK` (standard library only; `--stitch` uses Pillow; see the script's docstring).
