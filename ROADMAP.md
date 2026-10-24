@@ -107,11 +107,14 @@ slight wiggle from the 20 m routing grid.
   make the Voronoi edges follow them; cells clipped by the wall and inset
   by half their street widths). Still to do, with the lots: merge some
   cells for irregular, non-convex blocks; short-edge clean-up.
-- **20. Squares and monuments** — market square (a hollowed block),
+- **20. Squares and monuments** ✓ — market square (a hollowed block),
   cathedral with parvis, one parish church per quarter (~every 300 m,
-  **chevet to the east**), castle, halles, town hall, hôtel-Dieu,
-  cemeteries around churches, abbey often extra muros. Monuments are
-  special footprints (cross plan…).
+  **chevet to the east**), castle, halles, cemeteries around churches.
+  Done: `js/steps/monuments.js` (castle on the block nearest the core,
+  market on a main street with the halles, cathedral on the largest block
+  of the old core that holds it, parish churches by farthest-point
+  sampling, churchyards from the displaced lots). Still to come: town
+  hall, hôtel-Dieu, abbey extra muros (with the faubourgs).
 - **18. Lots** ✓ — each block cut into strip lots perpendicular to the street
   (5–8 m frontage, 20–40 m deep), narrower towards the centre. Done:
   `js/steps/lots.js` — per street edge a band of the lot depth divided by
@@ -150,7 +153,7 @@ slight wiggle from the 20 m routing grid.
 | M2 ✓ | Walls + gates + axes + bridge | The **silhouette** of the city |
 | M3 ✓ | Blocks + streets (Voronoi reuse) | It already looks like a city plan |
 | M4 ✓ | Lots + buildings | The goal: every building |
-| M5 | Squares + monuments | Churches, cathedral, castle, market |
+| M5 ✓ | Squares + monuments | Churches, cathedral, castle, market |
 | M6 | Faubourgs | |
 | M7 | Countryside | |
 | M8 | Pen-and-ink rendering + labels + SVG | The final drawing |
