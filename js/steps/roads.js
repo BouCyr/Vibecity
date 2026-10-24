@@ -251,6 +251,7 @@
       g.lineCap = 'round';
       g.lineJoin = 'round';
       for (const road of state.roads) {
+        if (road.kind === 'inward' && state.blocks) continue;  // intra muros, the streets of step 17 are the roads
         g.strokeStyle = '#6b4a2b';
         g.lineWidth = 2.5 * px;
         g.beginPath();

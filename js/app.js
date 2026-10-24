@@ -27,7 +27,8 @@
     window.TerrainStep,
     window.SiteStep,
     window.WallsStep,
-    window.RoadsStep
+    window.RoadsStep,
+    window.BlocksStep
   ];
 
   const els = {

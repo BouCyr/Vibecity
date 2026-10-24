@@ -99,14 +99,14 @@ slight wiggle from the 20 m routing grid.
 
 ### Phase C — Urban fabric
 
-- **17. Blocks and streets** — **reuse the existing pipeline at block
-  scale**: points (density rising towards the centre) → Voronoi → Lloyd →
-  merge short edges → smoothing, restricted to the walled area. Edges
-  become streets, cells become blocks (60–120 m). Then: drop some edges
-  for irregular blocks, widen the axes; streets 3–8 m, axes 8–12 m. This is
-  the main payoff of the current architecture: steps 1, 2, 6 and 8 already
-  are an organic-mesh library — to be factored into reusable functions
-  taking a polygon boundary instead of the whole map.
+- **17. Blocks and streets** ✓ — **reuse the existing pipeline at block
+  scale**: points (density rising towards the centre) → Voronoi → Lloyd,
+  restricted to the walled area. Edges become streets, cells become
+  blocks (60–120 m); streets 3–8 m, axes 8–12 m. Done: `js/steps/blocks.js`
+  (`computeVoronoi` reused; seeds mirrored across the walls and the axes
+  make the Voronoi edges follow them; cells clipped by the wall and inset
+  by half their street widths). Still to do, with the lots: merge some
+  cells for irregular, non-convex blocks; short-edge clean-up.
 - **18. Squares and monuments** — market square (a hollowed block),
   cathedral with parvis, one parish church per quarter (~every 300 m,
   **chevet to the east**), castle, halles, town hall, hôtel-Dieu,
@@ -143,7 +143,7 @@ slight wiggle from the 20 m routing grid.
 | M0 | Pan/zoom ✓, raster fields ✓ (step 11), scale constant ✓, geom.js | The existing map, zoomable, with a scale bar |
 | M1 ✓ | Fine terrain + site | The right spot, chosen automatically; metre-scale relief |
 | M2 ✓ | Walls + gates + axes + bridge | The **silhouette** of the city |
-| M3 | Blocks + streets (Voronoi reuse) | It already looks like a city plan |
+| M3 ✓ | Blocks + streets (Voronoi reuse) | It already looks like a city plan |
 | M4 | Lots + buildings | The goal: every building |
 | M5 | Squares + monuments | Churches, cathedral, castle, market |
 | M6 | Faubourgs | |
