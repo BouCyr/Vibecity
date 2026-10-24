@@ -60,12 +60,13 @@ only milestone with nothing new to look at.
 
 ### Phase A — Site and terrain detail
 
-- **13. Site** — score candidate locations on the map: river bank,
+- **13. Site** ✓ — score candidate locations on the map: river bank,
   crossing point, confluence, defensible hill, distance to the sea, flat
   enough ground; keep the best according to a preference (river port /
   hilltop town / confluence). Output: the city centre and orientation,
   drawn on the map. Settings: preference, minimum distance to the map
-  border (the countryside must fit around).
+  border (the countryside must fit around). Done: `js/steps/site.js`
+  (candidates every 20 m scored from the rasters, heat map layer).
 - **14. Fine terrain** — the altitude is known per cell/node (~110 m
   apart); add fine noise octaves (metre scale) constrained by the water
   levels so the banks stay consistent; marsh in the low ground. Produces
@@ -128,7 +129,7 @@ only milestone with nothing new to look at.
 | Milestone | Content | What becomes visible |
 |---|---|---|
 | M0 | Pan/zoom ✓, raster fields ✓ (step 11), scale constant ✓, geom.js | The existing map, zoomable, with a scale bar |
-| M1 | Site + fine terrain | The right spot, chosen automatically; metre-scale relief |
+| M1 | Site ✓ + fine terrain | The right spot, chosen automatically; metre-scale relief |
 | M2 | Walls + gates + axes + bridge | The **silhouette** of the city |
 | M3 | Blocks + streets (Voronoi reuse) | It already looks like a city plan |
 | M4 | Lots + buildings | The goal: every building |

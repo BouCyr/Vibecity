@@ -175,7 +175,7 @@
     for (let j = 0; j < h; j++) { // rows
       for (let i = 0; i < w; i++) f[i] = sq[j * w + i];
       edt1d(f, w, d, v, z);
-      for (let i = 0; i < w; i++) out.data[j * w + i] = Math.sqrt(d[i]) * field.pitch;
+      for (let i = 0; i < w; i++) out.data[j * w + i] = Math.min(Math.sqrt(d[i]), Math.hypot(w, h)) * field.pitch;
     }
     return out;
   }
@@ -216,9 +216,31 @@
     water(state, pitch, width, height) {
       return rasterizeCells(state, pitch, width, height, (c) => (isWater(c) ? 1 : 0));
     },
-    /** Distance (map units) to the nearest water sample; 0 on the water. */
+    /** 1 on the sea cells. */
+    sea(state, pitch, width, height) {
+      return rasterizeCells(state, pitch, width, height, (c) => (c.sea ? 1 : 0));
+    },
+    /** 1 on the river cells (every watercourse). */
+    river(state, pitch, width, height) {
+      return rasterizeCells(state, pitch, width, height, (c) => (c.river !== undefined ? 1 : 0));
+    },
+    /** 1 on the cells of the fleuve (the main watercourse), 0 elsewhere. */
+    fleuve(state, pitch, width, height) {
+      const idx = (state.rivers || []).findIndex((r) => r.kind === 'fleuve');
+      return rasterizeCells(state, pitch, width, height, (c) => (idx >= 0 && c.river === idx ? 1 : 0));
+    },
+    /** Distance (map units) to the nearest water sample; 0 on the water. The grid diagonal when there is none. */
     waterDistance(state, pitch, width, height, get) {
       return distanceTo(get('water'), (v) => v >= 0.5);
+    },
+    seaDistance(state, pitch, width, height, get) {
+      return distanceTo(get('sea'), (v) => v >= 0.5);
+    },
+    riverDistance(state, pitch, width, height, get) {
+      return distanceTo(get('river'), (v) => v >= 0.5);
+    },
+    fleuveDistance(state, pitch, width, height, get) {
+      return distanceTo(get('fleuve'), (v) => v >= 0.5);
     },
     /** Slope of the altitude, rise over run. */
     slope(state, pitch, width, height, get) {

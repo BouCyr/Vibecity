@@ -28,7 +28,7 @@
     const g = cv.getContext('2d');
     const img = g.createImageData(field.w, field.h);
     const [lo, hi] = field.minMax();
-    const fn = PAINTS[mode];
+    const fn = PAINTS[mode] || PAINTS.waterDistance;
     for (let k = 0, p = 0; k < field.data.length; k++, p += 4) {
       const c = fn(field.data[k], lo, hi);
       img.data[p] = c[0]; img.data[p + 1] = c[1]; img.data[p + 2] = c[2]; img.data[p + 3] = 255;
@@ -50,6 +50,8 @@
           { value: 'altitude', label: 'Altitude' },
           { value: 'water', label: 'Water' },
           { value: 'waterDistance', label: 'Distance to the water' },
+          { value: 'fleuveDistance', label: 'Distance to the fleuve' },
+          { value: 'seaDistance', label: 'Distance to the sea' },
           { value: 'slope', label: 'Slope' }
         ]
       }
@@ -60,7 +62,7 @@
       const field = global.Fields.get(state, s.show, s.pitch, ctx);
       state.fieldImage = paint(field, s.show);
       const [lo, hi] = field.minMax();
-      const units = { altitude: ' m', water: '', waterDistance: ' units', slope: '' };
+      const units = { altitude: ' m', water: '', waterDistance: ' units', fleuveDistance: ' units', seaDistance: ' units', slope: '' };
       const fmt = (v) => (s.show === 'slope' ? v.toFixed(3) : Math.round(v)) + units[s.show];
       const holes = (state.fields['altitude@' + s.pitch] || state.fields['water@' + s.pitch] || {}).holes || 0;
       return field.w + ' × ' + field.h + ' samples every ' + s.pitch + ' units (' + global.Units.toMetres(s.pitch) + ' m), ' +

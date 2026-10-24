@@ -8,7 +8,7 @@
   //   id, title, settings[]                       — UI description
   //   run(state, settings, rng, ctx) -> string?   — mutates shared state, returns info text
   //   draw(g, state, ctx)                         — renders its layer in map coordinates
-  //       (ctx.scale: CSS px per map unit, ctx.px: map units per CSS px, ctx.visible)
+  //       (ctx.scale: CSS px per map unit, ctx.px: map units per CSS px, ctx.visible, ctx.settings: its own)
   //   defaultVisible (optional, default true)     — whether its layer is drawn initially
   //   zIndex (optional, default: step position)   — drawing order of its layer
   const STEPS = [
@@ -23,7 +23,8 @@
     window.RiverCellsStep,
     window.ReliefStep,
     window.FieldsStep,
-    window.View3DStep
+    window.View3DStep,
+    window.SiteStep
   ];
 
   const els = {
@@ -579,6 +580,7 @@
     ctx.scale = view.scale;      // CSS px per map unit (for level of detail)
     ctx.px = 1 / view.scale;     // map units per CSS px (for hairlines)
     for (const l of layers) {
+      ctx.settings = config.steps[l.step.id];  // the step's own settings, for its layer
       if (config.visible[l.step.id]) l.step.draw(g, state, ctx);
     }
     g.restore();
