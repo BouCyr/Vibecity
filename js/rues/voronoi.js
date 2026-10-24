@@ -1,4 +1,5 @@
-// Streets page, step 1 — Voronoi diagram of random points over the 500 × 500 map.
+// Streets page, step 1 — Voronoi diagram of random points over the 500 × 500 map,
+// drawn with its dual Delaunay triangulation.
 // Reuses the main generator's points and Voronoi steps (js/steps/points.js,
 // js/steps/voronoi.js) as a single step.
 (function (global) {
@@ -17,6 +18,7 @@
         ]
       },
       { key: 'relax', label: 'Lloyd relaxation', type: 'range', min: 0, max: 10, step: 1, default: 2 },
+      { key: 'delaunay', label: 'Show Delaunay', type: 'select', default: 'yes', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
       { key: 'sites', label: 'Show sites', type: 'select', default: 'yes', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] }
     ],
 
@@ -39,6 +41,21 @@
         g.closePath();
       }
       g.stroke();
+      // Delaunay triangulation: a link between the sites of every two neighbouring cells.
+      if (ctx.settings.delaunay !== 'no') {
+        g.strokeStyle = 'rgba(40, 90, 200, .75)';
+        g.lineWidth = px;
+        g.beginPath();
+        state.cells.forEach((c, i) => {
+          for (const j of c.neighbors) {
+            if (j < i) continue;
+            const o = state.cells[j].site;
+            g.moveTo(c.site.x, c.site.y);
+            g.lineTo(o.x, o.y);
+          }
+        });
+        g.stroke();
+      }
       if (ctx.settings.sites === 'no') return;
       g.fillStyle = '#8c3b1f';
       for (const c of state.cells) {
