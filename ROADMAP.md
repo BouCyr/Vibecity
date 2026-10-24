@@ -45,7 +45,8 @@ only milestone with nothing new to look at.
    distance to water, to the centre, to the gates, slope. Almost every
    urban rule is of the form *density = f(distance to X)*: trivial on a
    raster, painful on vectors. Built lazily by the step that first needs
-   them, invalidated when an upstream step reruns.
+   them, cached in the state (so rebuilt at every generation). Done:
+   `js/fields.js` and step 11 (altitude, water, water distance, slope).
 3. **Shared geometry module** (`js/geom.js`): polygon offset/inset,
    clipping, oriented-bounding-box split, point in polygon, smoothing,
    polyline resampling. Today each step carries its own geometry; the
@@ -55,37 +56,37 @@ only milestone with nothing new to look at.
    of life. Can come a little later, but the data model is designed for it
    from the start (every object = polygon + class).
 
-## 2. City pipeline (continuing the numbered steps)
+## 2. City pipeline (continuing the numbered steps; 11 is the raster fields, 12 the 3D view)
 
 ### Phase A — Site and terrain detail
 
-- **12. Site** — score candidate locations on the map: river bank,
+- **13. Site** — score candidate locations on the map: river bank,
   crossing point, confluence, defensible hill, distance to the sea, flat
   enough ground; keep the best according to a preference (river port /
   hilltop town / confluence). Output: the city centre and orientation,
   drawn on the map. Settings: preference, minimum distance to the map
   border (the countryside must fit around).
-- **13. Fine terrain** — the altitude is known per cell/node (~110 m
+- **14. Fine terrain** — the altitude is known per cell/node (~110 m
   apart); add fine noise octaves (metre scale) constrained by the water
   levels so the banks stay consistent; marsh in the low ground. Produces
   the altitude raster that every later step reads.
 
 ### Phase B — Skeleton
 
-- **14. Core and walls** — a core (castrum / castle on the hill /
+- **15. Core and walls** — a core (castrum / castle on the hill /
   cathedral), then two successive walls (small Gallo-Roman one ~10 ha,
   large 13th-century one ~50–100 ha). The outline follows the terrain
   (ridges, the river as natural defence); towers at intervals; gates where
   the main roads leave. The old wall becomes an inner street/boulevard —
   this is what gives the historical layering.
-- **15. Main roads and bridge** — incoming roads from the map borders
+- **16. Main roads and bridge** — incoming roads from the map borders
   (towards the neighbouring towns, along the river) → gates → convergence
   on the centre (market / cathedral). Bridge placement (narrow, shallow,
   stable banks). These axes structure everything else.
 
 ### Phase C — Urban fabric
 
-- **16. Blocks and streets** — **reuse the existing pipeline at block
+- **17. Blocks and streets** — **reuse the existing pipeline at block
   scale**: points (density rising towards the centre) → Voronoi → Lloyd →
   merge short edges → smoothing, restricted to the walled area. Edges
   become streets, cells become blocks (60–120 m). Then: drop some edges
@@ -93,31 +94,31 @@ only milestone with nothing new to look at.
   the main payoff of the current architecture: steps 1, 2, 6 and 8 already
   are an organic-mesh library — to be factored into reusable functions
   taking a polygon boundary instead of the whole map.
-- **17. Squares and monuments** — market square (a hollowed block),
+- **18. Squares and monuments** — market square (a hollowed block),
   cathedral with parvis, one parish church per quarter (~every 300 m,
   **chevet to the east**), castle, halles, town hall, hôtel-Dieu,
   cemeteries around churches, abbey often extra muros. Monuments are
   special footprints (cross plan…).
-- **18. Lots** — each block cut into strip lots perpendicular to the street
+- **19. Lots** — each block cut into strip lots perpendicular to the street
   (5–8 m frontage, 20–40 m deep), narrower towards the centre. Algorithm:
   recursive OBB split, or inward offset + division of the street frontage.
-- **19. Buildings** — one footprint per lot, aligned on the street, yard at
+- **20. Buildings** — one footprint per lot, aligned on the street, yard at
   the back; height and roof type (ridge line) stored. The data is
   **render-independent**.
 
 ### Phase D — Outside the walls
 
-- **20. Faubourgs** — ribbon development along the roads past the gates,
+- **21. Faubourgs** — ribbon development along the roads past the gates,
   decreasing density, larger lots with gardens; mills on the river,
   tanneries downstream, port and quays, leper house far away, abbeys.
-- **21. Countryside** — field parcels (open-field strips or bocage)
+- **22. Countryside** — field parcels (open-field strips or bocage)
   oriented by the lanes and the relief; market-garden belt, vineyards and
   orchards near the city; woods on steep slopes; villages with their
   church 2–3 km away, hamlets; lanes by shortest path over the terrain.
 
 ### Phase E — Drawing
 
-- **22. Cartographic rendering** — the ground plan: water, relief (contour
+- **23. Cartographic rendering** — the ground plan: water, relief (contour
   lines or hachures), hatched fields, buildings in black, monuments in
   bold, generated place names, legend, scale bar, pen-and-ink style. SVG
   export.
@@ -126,7 +127,7 @@ only milestone with nothing new to look at.
 
 | Milestone | Content | What becomes visible |
 |---|---|---|
-| M0 | Pan/zoom, raster fields, geom.js, scale constant | The existing map, zoomable, with a scale bar |
+| M0 | Pan/zoom ✓, raster fields ✓ (step 11), scale constant ✓, geom.js | The existing map, zoomable, with a scale bar |
 | M1 | Site + fine terrain | The right spot, chosen automatically; metre-scale relief |
 | M2 | Walls + gates + axes + bridge | The **silhouette** of the city |
 | M3 | Blocks + streets (Voronoi reuse) | It already looks like a city plan |

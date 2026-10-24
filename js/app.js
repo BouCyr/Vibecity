@@ -22,6 +22,7 @@
     window.CoastStep,
     window.RiverCellsStep,
     window.ReliefStep,
+    window.FieldsStep,
     window.View3DStep
   ];
 
@@ -567,6 +568,7 @@
     g.fillRect(0, 0, MAP_W, MAP_H);
     g.restore();
     // Layers only draw inside the map, as they did when the canvas was the map.
+    g.save();
     g.beginPath();
     g.rect(0, 0, MAP_W, MAP_H);
     g.clip();
@@ -579,6 +581,30 @@
     for (const l of layers) {
       if (config.visible[l.step.id]) l.step.draw(g, state, ctx);
     }
+    g.restore();
+    drawScaleBar(g, dpr);
+  }
+
+  /** Scale bar at the bottom right of the stage: a round number of metres, 80–200 px long. */
+  function drawScaleBar(g, dpr) {
+    const metresPerPx = Units.METRES_PER_UNIT / view.scale;
+    let m = Math.pow(10, Math.floor(Math.log10(150 * metresPerPx)));
+    for (const f of [5, 2, 1]) if (f * m * 0.98 <= 200 * metresPerPx) { m *= f; break; }
+    const len = m / metresPerPx;
+    const x1 = stageW - 16, x0 = x1 - len, y = stageH - 18;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.font = '12px Georgia, serif';
+    g.textAlign = 'right';
+    g.textBaseline = 'bottom';
+    const label = m >= 1000 ? (m / 1000) + ' km' : m + ' m';
+    const tw = g.measureText(label).width;
+    g.fillStyle = 'rgba(243, 234, 216, .85)';
+    g.fillRect(x0 - 8, y - 22, len + 16 + Math.max(0, tw - len), 30);
+    g.fillStyle = '#3a2e22';
+    g.fillText(label, x1, y - 4);
+    g.fillRect(x0, y, len, 3);
+    g.fillRect(x0, y - 4, 1, 7);
+    g.fillRect(x1 - 1, y - 4, 1, 7);
   }
 
   window.addEventListener('resize', resize);
