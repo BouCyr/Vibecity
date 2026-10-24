@@ -84,10 +84,11 @@
     // colored by the mean altitude of the three, so node altitudes show too.
     // Uses the cell polygon (which follows the smoothed coast once step 6 ran)
     // and its per-point altitudes when available.
-    draw(g, state) {
+    draw(g, state, ctx) {
+      const px = (ctx && ctx.px) || 1;  // map units per screen px: constant widths on screen
       // Once the altitude curve step has run, altitudes are in metres.
       const scale = state.altitudeMax || 1;
-      g.lineWidth = 1;
+      g.lineWidth = px;  // covers the seams between the filled cells
       g.lineJoin = 'round';
       for (const c of state.cells) {
         const poly = c.poly;

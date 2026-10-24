@@ -735,11 +735,12 @@
       return res.water.length + ' water cells (' + res.junctions.length + ' confluences)' + notes;
     },
 
-    draw(g, state) {
+    draw(g, state, ctx) {
       if (!state.riverCellsBuilt) return;
+      const px = (ctx && ctx.px) || 1;  // map units per screen px: constant widths on screen
       g.fillStyle = '#5f86a8';
       g.strokeStyle = '#5f86a8';
-      g.lineWidth = 1;
+      g.lineWidth = px;
       g.lineJoin = 'round';
       for (const c of state.cells) {
         if (!(c.sea || c.river !== undefined) || !c.poly.length) continue;
@@ -750,7 +751,7 @@
         g.stroke();
       }
       g.strokeStyle = '#2f3f52';
-      g.lineWidth = 3;
+      g.lineWidth = 1.5 * px;
       g.lineCap = 'round';
       g.beginPath();
       for (const [a, b] of state.shore) {

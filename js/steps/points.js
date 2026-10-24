@@ -112,19 +112,20 @@
       return points.length + ' points';
     },
 
-    draw(g, state) {
+    draw(g, state, ctx) {
+      const px = (ctx && ctx.px) || 1;  // map units per screen px: constant widths on screen
       const b = state.bounds;
       g.save();
-      g.setLineDash([12, 10]);
+      g.setLineDash([6 * px, 5 * px]);
       g.strokeStyle = 'rgba(140, 59, 31, .5)';
-      g.lineWidth = 2;
+      g.lineWidth = px;
       g.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
       g.restore();
 
       g.fillStyle = '#3a2e22';
       for (const p of state.points) {
         g.beginPath();
-        g.arc(p.x, p.y, 4, 0, Math.PI * 2);
+        g.arc(p.x, p.y, 2 * px, 0, Math.PI * 2);
         g.fill();
       }
     }

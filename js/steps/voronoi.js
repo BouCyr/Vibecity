@@ -183,9 +183,10 @@
       return cells.length + ' cells, ' + state.nodes.length + ' nodes, ' + edges / 2 + ' shared edges';
     },
 
-    draw(g, state) {
+    draw(g, state, ctx) {
+      const px = (ctx && ctx.px) || 1;  // map units per screen px: constant widths on screen
       g.strokeStyle = 'rgba(90, 64, 40, .55)';
-      g.lineWidth = 1.5;
+      g.lineWidth = 0.75 * px;
       g.lineJoin = 'round';
       g.beginPath();
       for (const c of state.cells) {
@@ -200,7 +201,7 @@
       g.fillStyle = '#8c3b1f';
       for (const c of state.cells) {
         g.beginPath();
-        g.arc(c.site.x, c.site.y, 4, 0, Math.PI * 2);
+        g.arc(c.site.x, c.site.y, 2 * px, 0, Math.PI * 2);
         g.fill();
       }
     }

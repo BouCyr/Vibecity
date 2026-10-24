@@ -673,6 +673,7 @@
     },
 
     draw(g, state, ctx) {
+      const px = (ctx && ctx.px) || 1;  // map units per screen px: constant widths on screen
       if (!state.rivers || !state.rivers.length) return;
       // Once step 9 has built the water cells (and is shown), it draws the rivers.
       if (state.riverCellsBuilt && ctx && ctx.visible && ctx.visible.riverCells) return;
@@ -684,9 +685,9 @@
       g.lineJoin = 'round';
       // The ideal meandering curves the courses were snapped to, dashed.
       g.save();
-      g.setLineDash([6, 6]);
+      g.setLineDash([3 * px, 3 * px]);
       g.strokeStyle = 'rgba(47, 63, 82, 0.6)';
-      g.lineWidth = 1.5;
+      g.lineWidth = 0.75 * px;
       for (const ideal of state.riverIdeals || []) {
         g.beginPath();
         ideal.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
@@ -699,7 +700,7 @@
         for (const p of paths) {
           for (let k = 0; k + 1 < p.points.length; k++) {
             const w = (p.widths[k] + p.widths[k + 1]) / 2;
-            g.lineWidth = pass ? w : w + 5;
+            g.lineWidth = pass ? w : w + 3 * px;  // the width is real, the bank line is not
             g.beginPath();
             g.moveTo(p.points[k].x, p.points[k].y);
             g.lineTo(p.points[k + 1].x, p.points[k + 1].y);

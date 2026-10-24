@@ -25,7 +25,7 @@ Procedural generator for the plan of a fictional medieval city. Plain HTML/JS, n
 
 Each step's checkbox toggles whether its layer is drawn.
 
-Setting types: `range`, `select`, `toggles` (array of selected values), `curve` (array of intermediate `[x, y]` points of an increasing curve). Add a step by creating `js/steps/<name>.js` exposing `{ id, title, settings, run(state, settings, rng, ctx), draw(g, state, ctx), defaultVisible?, zIndex? }` and adding it to `STEPS` in `js/app.js`.
+Setting types: `range`, `select`, `toggles` (array of selected values), `curve` (array of intermediate `[x, y]` points of an increasing curve). Add a step by creating `js/steps/<name>.js` exposing `{ id, title, settings, run(state, settings, rng, ctx), draw(g, state, ctx), defaultVisible?, zIndex? }` and adding it to `STEPS` in `js/app.js`. In `draw`, `ctx.px` is the number of map units per screen pixel (`ctx.scale` its inverse): outlines, markers and dashes are sized in multiples of it so they keep the same width on screen at every zoom, while real widths (rivers) stay in map units.
 
 See [ROADMAP.md](ROADMAP.md) for the plan towards a city drawn building by building (site, walls, streets, lots, buildings, faubourgs, countryside).
 
