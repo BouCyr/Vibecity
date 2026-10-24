@@ -1,7 +1,7 @@
 // Streets page, step 2 — the streets graph: the Voronoi sites are crossroads and
-// the Delaunay links between neighbouring sites are streets. A cell with exactly
-// one edge on the map border also gets a street from its site to the middle of
-// that edge, where it leaves the map. The crossroads nearest the middle of the
+// the Delaunay links of step 1 (those crossing their Voronoi edge) are streets.
+// A cell with exactly one edge on the map border also gets a street from its
+// site to the middle of that edge, where it leaves the map. The crossroads nearest the middle of the
 // map is the city centre.
 (function (global) {
   'use strict';
@@ -27,9 +27,7 @@
       // Crossroads 0..n-1 are the cell sites; exits on the map border follow.
       const crossroads = cells.map((c, i) => ({ x: c.site.x, y: c.site.y, cell: i, exit: false }));
       const streets = [];
-      cells.forEach((c, i) => {
-        for (const j of c.neighbors) if (j > i) streets.push({ a: i, b: j, kind: 'delaunay' });
-      });
+      for (const [i, j] of state.delaunay) streets.push({ a: i, b: j, kind: 'delaunay' });
       let exits = 0;
       cells.forEach((c, i) => {
         const p = c.poly, border = [];
