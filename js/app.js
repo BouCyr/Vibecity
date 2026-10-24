@@ -24,6 +24,7 @@
     window.ReliefStep,
     window.FieldsStep,
     window.View3DStep,
+    window.TerrainStep,
     window.SiteStep
   ];
 

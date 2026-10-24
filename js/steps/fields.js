@@ -59,6 +59,7 @@
 
     run(state, s, rng, ctx) {
       const t0 = performance.now();
+      state.fieldPitch = s.pitch;
       const field = global.Fields.get(state, s.show, s.pitch, ctx);
       state.fieldImage = paint(field, s.show);
       const [lo, hi] = field.minMax();

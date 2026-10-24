@@ -1,7 +1,7 @@
-// Step 13 — site of the city: every point of the map is scored for a medieval
+// Step 14 — site of the city: every point of the map is scored for a medieval
 // town (on the bank of the fleuve, buildable, a crossing, near a confluence or
 // the sea, on a defensible rise…) and the best one becomes the city centre.
-// Reads the raster fields of step 11.
+// Reads the raster fields of step 11 and the fine terrain of step 13.
 (function (global) {
   'use strict';
 
@@ -45,11 +45,11 @@
     run(state, s, rng, ctx) {
       const t0 = performance.now();
       const W = ctx.width, H = ctx.height, U = global.Units.toUnits;
-      const F = (name) => global.Fields.get(state, name, 2, ctx);
+      const F = (name) => global.Fields.get(state, name, state.fieldPitch || 2, ctx);
       const pref = PREFERENCES[s.preference];
       const R = U(s.cityRadius);
       const margin = Math.min(U(s.edgeMargin), W / 2 - 50);
-      const water = F('water'), altitude = F('altitude'), slope = F('slope');
+      const water = F('water'), altitude = F('terrain'), slope = F('terrainSlope');
       const hasFleuve = (state.rivers || []).some((r) => r.kind === 'fleuve');
       const hasRiver = (state.rivers || []).length > 0;
       const hasSea = state.cells.some((c) => c.sea);

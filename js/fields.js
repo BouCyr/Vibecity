@@ -136,8 +136,8 @@
 
   // ---------- Distance transform ----------
 
-  /** Felzenszwalb–Huttenlocher squared distance transform of one line (f in, d out, in samples). */
-  function edt1d(f, n, d, v, z) {
+  /** Felzenszwalb–Huttenlocher squared distance transform of one line (f in, d out, in samples); `src[q]` gets the line index of q's nearest source. */
+  function edt1d(f, n, d, v, z, src) {
     let k = 0;
     v[0] = 0; z[0] = -INF; z[1] = INF;
     for (let q = 1; q < n; q++) {
@@ -153,30 +153,76 @@
     for (let q = 0; q < n; q++) {
       while (z[k + 1] < q) k++;
       d[q] = (q - v[k]) * (q - v[k]) + f[v[k]];
+      src[q] = v[k];
     }
   }
 
   /**
    * Euclidean distance (map units, from sample centre to sample centre) from
    * every sample to the nearest sample where `inside(value)` holds. Samples
-   * inside get 0. Exact, O(n).
+   * inside get 0. Exact, O(n). The result's `nearest` (Int32Array) gives the
+   * index of that nearest source sample (-1 when there is none).
    */
   function distanceTo(field, inside) {
     const w = field.w, h = field.h, n = Math.max(w, h);
     const sq = new Float64Array(w * h);
+    const rowOf = new Int32Array(w * h);  // after the column pass: row of the nearest source in that column
     for (let k = 0; k < sq.length; k++) sq[k] = inside(field.data[k]) ? 0 : INF;
-    const f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+    const f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1), src = new Int32Array(n);
     for (let i = 0; i < w; i++) { // columns
       for (let j = 0; j < h; j++) f[j] = sq[j * w + i];
-      edt1d(f, h, d, v, z);
-      for (let j = 0; j < h; j++) sq[j * w + i] = d[j];
+      edt1d(f, h, d, v, z, src);
+      for (let j = 0; j < h; j++) { sq[j * w + i] = d[j]; rowOf[j * w + i] = src[j]; }
     }
     const out = new Field(w, h, field.pitch);
+    const nearest = new Int32Array(w * h);
+    const cap = Math.hypot(w, h);
     for (let j = 0; j < h; j++) { // rows
       for (let i = 0; i < w; i++) f[i] = sq[j * w + i];
-      edt1d(f, w, d, v, z);
-      for (let i = 0; i < w; i++) out.data[j * w + i] = Math.min(Math.sqrt(d[i]), Math.hypot(w, h)) * field.pitch;
+      edt1d(f, w, d, v, z, src);
+      for (let i = 0; i < w; i++) {
+        const dist = Math.sqrt(d[i]);
+        out.data[j * w + i] = Math.min(dist, cap) * field.pitch;
+        nearest[j * w + i] = dist < cap ? rowOf[j * w + src[i]] * w + src[i] : -1;
+      }
     }
+    out.nearest = nearest;
+    return out;
+  }
+
+  /**
+   * Gaussian-like blur (three box blurs) of radius `radius` map units. With a
+   * `weight` field (0–1 per sample), it is a normalized convolution: samples
+   * of weight 0 do not pull on their neighbours (they get the blurred value of
+   * the weighted ones around).
+   */
+  function blur(field, radius, weight) {
+    const w = field.w, h = field.h, r = Math.max(1, Math.round(radius / field.pitch / 1.7));
+    const num = Float32Array.from(field.data), den = new Float32Array(w * h);
+    if (weight) for (let k = 0; k < num.length; k++) { num[k] *= weight.data[k]; den[k] = weight.data[k]; }
+    else den.fill(1);
+    const tmp = new Float32Array(w * h);
+    const pass = (a) => {
+      for (let j = 0; j < h; j++) { // rows, running sum
+        let sum = 0;
+        for (let i = -r; i <= r; i++) sum += a[j * w + Math.min(w - 1, Math.max(0, i))];
+        for (let i = 0; i < w; i++) {
+          tmp[j * w + i] = sum / (2 * r + 1);
+          sum += a[j * w + Math.min(w - 1, i + r + 1)] - a[j * w + Math.max(0, i - r)];
+        }
+      }
+      for (let i = 0; i < w; i++) { // columns
+        let sum = 0;
+        for (let j = -r; j <= r; j++) sum += tmp[Math.min(h - 1, Math.max(0, j)) * w + i];
+        for (let j = 0; j < h; j++) {
+          a[j * w + i] = sum / (2 * r + 1);
+          sum += tmp[Math.min(h - 1, j + r + 1) * w + i] - tmp[Math.max(0, j - r) * w + i];
+        }
+      }
+    };
+    for (let t = 0; t < 3; t++) { pass(num); pass(den); }
+    const out = new Field(w, h, field.pitch);
+    for (let k = 0; k < num.length; k++) out.data[k] = den[k] > 1e-6 ? num[k] / den[k] : field.data[k];
     return out;
   }
 
@@ -245,6 +291,13 @@
     /** Slope of the altitude, rise over run. */
     slope(state, pitch, width, height, get) {
       return slopeOf(get('altitude'));
+    },
+    /** The fine terrain of the terrain step when it has run (at its pitch), else the cell altitude. */
+    terrain(state, pitch, width, height, get) {
+      return state.terrain && state.terrain.pitch === pitch ? state.terrain : get('altitude');
+    },
+    terrainSlope(state, pitch, width, height, get) {
+      return slopeOf(get('terrain'));
     }
   };
 
@@ -268,6 +321,7 @@
     rasterizeCells: rasterizeCells,
     rasterizeTriangle: rasterizeTriangle,
     distanceTo: distanceTo,
+    blur: blur,
     slopeOf: slopeOf
   };
 })(window);
