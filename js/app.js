@@ -391,17 +391,44 @@
   let state = null;
   const ctx = { width: MAP_W, height: MAP_H };
 
+  // Cache of the upstream steps: after every step from the first cached one on,
+  // a shallow snapshot of the state. When a setting changes, generation resumes
+  // from the snapshot taken before the first step whose settings (or the seed)
+  // changed. This relies on a rule for the steps from the first cached one on:
+  // they add keys to the state (and may fill state.fields with fields that
+  // depend only on earlier steps) but never alter what earlier steps built.
+  // The terrain steps 1–10 do alter cells and nodes in place, so a change
+  // there regenerates everything.
+  const FIRST_CACHED = STEPS.indexOf(window.ReliefStep);
+  const snapshots = [];   // snapshots[i]: the state right after step i
+  const ranWith = [];     // ranWith[i]: seed + settings JSON that step i last ran with
+  let stepTimes = [];
+
   function generate() {
     const t0 = performance.now();
-    state = {};
-    for (const step of STEPS) {
+    const keys = STEPS.map((step) => config.seed + '|' + JSON.stringify(config.steps[step.id]));
+    let first = 0;
+    while (first < STEPS.length && ranWith[first] === keys[first] && (first < FIRST_CACHED || snapshots[first])) first++;
+    if (first >= STEPS.length) return;  // nothing changed
+    // Resume from the snapshot before the first changed step, when there is one.
+    let from = first > FIRST_CACHED && snapshots[first - 1] ? first : 0;
+    if (from === 0) state = {};
+    else state = Object.assign({}, snapshots[from - 1]);
+    for (let i = from; i < STEPS.length; i++) {
+      const step = STEPS[i];
       // Each step gets its own generator derived from the seed and its id,
       // so tweaking one step never reshuffles the randomness of another.
       const rng = new Rng(config.seed + '|' + step.id);
+      const t1 = performance.now();
       const info = step.run(state, config.steps[step.id], rng, ctx);
+      stepTimes[i] = performance.now() - t1;
       infoEls[step.id].textContent = info || '';
+      ranWith[i] = keys[i];
+      snapshots[i] = i >= FIRST_CACHED ? Object.assign({}, state) : null;
     }
-    els.status.textContent = 'Generated in ' + Math.round(performance.now() - t0) + ' ms';
+    const total = Math.round(performance.now() - t0);
+    els.status.textContent = 'Generated in ' + total + ' ms' + (from > 0 ? ' (from step ' + (from + 1) + ', the earlier ones cached)' : '');
+    els.status.title = STEPS.map((step, i) => (i + 1) + '. ' + step.title + ': ' + Math.round(stepTimes[i] || 0) + ' ms').join('\n');
   }
 
   let pending = false;

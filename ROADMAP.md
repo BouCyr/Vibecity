@@ -170,6 +170,8 @@ the rest is filling; if they look wrong, we know early.
   the plans of Turgot, Belleforest, Braun & Hogenberg give densities,
   street widths, block sizes. Calibration parameters (lot, block, street)
   are settings whose defaults come from those plans.
-- **Performance**: a step only reruns when an upstream step changes (as
-  today); rasters rather than repeated vector queries; draw with level of
-  detail (no building outlines when zoomed out).
+- **Performance**: a step only reruns when an upstream step changes — done:
+  shallow snapshots of the state after every step from step 10 on, a
+  changed setting resumes from the snapshot before it (35 ms for a lots
+  setting instead of 4 s); rasters rather than repeated vector queries;
+  draw with level of detail (no building outlines when zoomed out).
