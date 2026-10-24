@@ -5,5 +5,5 @@ window.VibecityPage = {
   height: 500,
   storageKey: 'vibecity.rues.savedSettings',
   firstCached: 0,
-  steps: [window.StreetsVoronoiStep]
+  steps: [window.StreetsVoronoiStep, window.StreetsGraphStep]
 };

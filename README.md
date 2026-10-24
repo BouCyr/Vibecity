@@ -11,7 +11,8 @@ Procedural generator for the plan of a fictional medieval city. Plain HTML/JS, n
 
 A separate page for the fine generation of streets, built on the same shell (`js/app.js`, configured through `window.VibecityPage`: map size, step list, storage key) with its own steps in `js/rues/`. The map is 500×500 units (1.25 km × 1.25 km).
 
-1. **Voronoi diagram** — 5 random points by default (true random or Poisson disk) and their Voronoi cells, with Lloyd relaxation, drawn with the Delaunay triangulation in blue (links between the sites of neighbouring cells); reuses the main page's points and Voronoi code.
+1. **Voronoi diagram** — 30 random points by default (true random or Poisson disk) and their Voronoi cells, with Lloyd relaxation, drawn with the Delaunay triangulation in blue (links between the sites of neighbouring cells); reuses the main page's points and Voronoi code.
+2. **Streets** — the sites become crossroads and the Delaunay links become streets (blue). A cell with exactly one edge on the map border gets a street from its site to the middle of that edge (mauve), where it leaves the map; corner cells, with two border edges, get none.
 
 ## Steps
 
