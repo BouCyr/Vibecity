@@ -32,7 +32,9 @@
     window.LotsStep,
     window.BuildingsStep,
     window.MonumentsStep,
-    window.FaubourgsStep
+    window.FaubourgsStep,
+    window.VillagesStep,
+    window.LandUseStep
   ];
 
   const els = {

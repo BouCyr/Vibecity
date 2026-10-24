@@ -120,6 +120,8 @@
     return hits;
   }
 
+  global.Routing = { route: route, smoothPolyline: smoothPolyline, wallDepth: wallDepth };
+
   global.RoadsStep = {
     id: 'roads',
     title: 'Main roads and bridge',

@@ -81,6 +81,57 @@
     return [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(([u, v]) => ({ x: cx + ex * u + nx * v, y: cy + ey * u + ny * v }));
   }
 
+  /**
+   * A ribbon of strip lots on both sides of a lane, from distance s0 along it
+   * for a length Lf: frontages from opts.frontNear to opts.frontFar (units),
+   * lots opts.depth deep, every lot built in the first opts.fullBuilt share
+   * and then less and less; each lot gets a detached house at the front.
+   * `buildable(poly)` says whether a lot may stand there. Exported for the
+   * villages and hamlets.
+   */
+  function layRibbon(walk, s0, Lf, roadHalf, opts, rng, buildable) {
+    const toU = U().toUnits;
+    const lots = [], houses = [];
+    for (const side of [-1, 1]) {
+      let sPos = s0;
+      while (sPos < Math.min(walk.length - 4, s0 + Lf)) {
+        const t = (sPos - s0) / Lf;
+        const w = (opts.frontNear + (opts.frontFar - opts.frontNear) * t) * (1 + 0.25 * rng.range(-1, 1));
+        const a = walk.at(sPos), b = walk.at(sPos + w);
+        const na = { x: -a.ty * side, y: a.tx * side }, nb = { x: -b.ty * side, y: b.tx * side };
+        const d = opts.depth * (1 + 0.3 * rng.range(-1, 1));
+        const poly = [
+          { x: a.x + na.x * roadHalf, y: a.y + na.y * roadHalf }, { x: b.x + nb.x * roadHalf, y: b.y + nb.y * roadHalf },
+          { x: b.x + nb.x * (roadHalf + d), y: b.y + nb.y * (roadHalf + d) }, { x: a.x + na.x * (roadHalf + d), y: a.y + na.y * (roadHalf + d) }
+        ];
+        sPos += w;
+        // Built? Always in the first part of the ribbon, then less and less.
+        const built = t < opts.fullBuilt || rng.random() < (1 - t) / (1 - opts.fullBuilt);
+        if (!built || !buildable(poly)) continue;
+        const front = { x: (poly[0].x + poly[1].x) / 2, y: (poly[0].y + poly[1].y) / 2 };
+        const along = { x: (b.x - a.x) / (Math.hypot(b.x - a.x, b.y - a.y) || 1), y: (b.y - a.y) / (Math.hypot(b.x - a.x, b.y - a.y) || 1) };
+        const inward = { x: (na.x + nb.x) / 2, y: (na.y + nb.y) / 2 };
+        const lot = { poly: poly, block: -1, edge: -1, street: 'road', width: w, front: front, inward: inward, along: along, depth: d, zone: opts.zone + t };
+        lots.push(lot);
+        // The house: at the front, a share of the frontage (detached), 8–11 m deep.
+        const share = 0.95 - 0.45 * t;
+        const hw = w * Math.min(1, share * (1 + 0.15 * rng.range(-1, 1)));
+        const hd = Math.min(d, toU(8 + 3 * rng.random()));
+        let house = clipHalf(poly, inward.x, inward.y, inward.x * front.x + inward.y * front.y + hd);
+        const ea = along.x * front.x + along.y * front.y;
+        house = clipHalf(house, -along.x, -along.y, -(ea - hw / 2));
+        house = clipHalf(house, along.x, along.y, ea + hw / 2);
+        if (house.length >= 3 && polygonArea(house) > 3) {
+          houses.push({ poly: house, lot: lot, floors: rng.random() < 0.7 ? 1 : 2, height: 3.2 * (rng.random() < 0.7 ? 1 : 2), roof: rng.random() < 0.5 ? 'ridge' : 'gable', depth: hd });
+        }
+      }
+    }
+    return { lots: lots, houses: houses };
+  }
+  global.layRibbon = layRibbon;
+  global.polylineWalker = walker;
+  global.wallDepthOf = depth;
+
   global.FaubourgsStep = {
     id: 'faubourgs',
     title: 'Faubourgs',
@@ -131,41 +182,10 @@
         }
         const roadHalf = toU(4);
         const ribbon = { road: road, lots: 0 };
-        for (const side of [-1, 1]) {
-          let sPos = s0;
-          while (sPos < Math.min(walk.length - 4, s0 + Lf)) {
-            const t = (sPos - s0) / Lf;
-            const w = toU(s.frontNear + (s.frontFar - s.frontNear) * t) * (1 + 0.25 * rng.range(-1, 1));
-            const a = walk.at(sPos), b = walk.at(sPos + w);
-            const na = { x: -a.ty * side, y: a.tx * side }, nb = { x: -b.ty * side, y: b.tx * side };
-            const d = D * (1 + 0.3 * rng.range(-1, 1));
-            const poly = [
-              { x: a.x + na.x * roadHalf, y: a.y + na.y * roadHalf }, { x: b.x + nb.x * roadHalf, y: b.y + nb.y * roadHalf },
-              { x: b.x + nb.x * (roadHalf + d), y: b.y + nb.y * (roadHalf + d) }, { x: a.x + na.x * (roadHalf + d), y: a.y + na.y * (roadHalf + d) }
-            ];
-            sPos += w;
-            // Built? Always in the first part of the ribbon, then less and less.
-            const built = t < s.fullBuilt || rng.random() < (1 - t) / (1 - s.fullBuilt);
-            if (!built || !buildable(poly, road)) continue;
-            const front = { x: (poly[0].x + poly[1].x) / 2, y: (poly[0].y + poly[1].y) / 2 };
-            const along = { x: (b.x - a.x) / (Math.hypot(b.x - a.x, b.y - a.y) || 1), y: (b.y - a.y) / (Math.hypot(b.x - a.x, b.y - a.y) || 1) };
-            const inward = { x: (na.x + nb.x) / 2, y: (na.y + nb.y) / 2 };
-            const lot = { poly: poly, block: -1, edge: -1, street: 'road', width: w, front: front, inward: inward, along: along, depth: d, zone: 1 + t, faubourg: true };
-            newLots.push(lot);
-            ribbon.lots++;
-            // The house: at the front, a share of the frontage (detached), 8–11 m deep.
-            const share = 0.95 - 0.45 * t;
-            const hw = w * Math.min(1, share * (1 + 0.15 * rng.range(-1, 1)));
-            const hd = Math.min(d, toU(8 + 3 * rng.random()));
-            let house = clipHalf(poly, inward.x, inward.y, inward.x * front.x + inward.y * front.y + hd);
-            const ea = along.x * front.x + along.y * front.y;
-            house = clipHalf(house, -along.x, -along.y, -(ea - hw / 2));
-            house = clipHalf(house, along.x, along.y, ea + hw / 2);
-            if (house.length >= 3 && polygonArea(house) > 3) {
-              newHouses.push({ poly: house, lot: lot, floors: rng.random() < 0.7 ? 1 : 2, height: 3.2 * (rng.random() < 0.7 ? 1 : 2), roof: rng.random() < 0.5 ? 'ridge' : 'gable', depth: hd });
-            }
-          }
-        }
+        const made = layRibbon(walk, s0, Lf, roadHalf, { frontNear: toU(s.frontNear), frontFar: toU(s.frontFar), depth: D, fullBuilt: s.fullBuilt, zone: 1 }, rng, (poly) => buildable(poly, road));
+        for (const lot of made.lots) { lot.faubourg = true; newLots.push(lot); }
+        for (const h of made.houses) newHouses.push(h);
+        ribbon.lots = made.lots.length;
         ribbons.push(ribbon);
       }
 

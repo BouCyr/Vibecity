@@ -138,14 +138,20 @@ outward roads, found with the faubourgs, is fixed.)
   the town along the cheap axes and out of another gate, and could end at
   any border; the town is now closed to them and each goes to the border
   in its gate's direction. Tanneries not done.
-- **22. Countryside** — field parcels (open-field strips or bocage)
-  oriented by the lanes and the relief; market-garden belt, vineyards and
-  orchards near the city; woods on steep slopes; villages with their
-  church 2–3 km away, hamlets; lanes by shortest path over the terrain.
+- **22. Villages and lanes** ✓ — villages with their church 1–2.8 km away,
+  hamlets; lanes by cheapest path over the terrain to the road network
+  (fords allowed). Done: `js/steps/villages.js` (sites scored like the
+  town's, lanes, ribbons of houses, village churches).
+- **23. Fields and woods** ✓ — field parcels (open-field strips in furlongs,
+  or bocage) oriented by the lanes and the relief; market-garden belt,
+  vineyards and orchards near the city; wet meadows; woods on steep
+  slopes and beyond the clearings. Done: `js/steps/landuse.js` (land-use
+  raster every 10 m, furlongs as Voronoi cells, strips clipped to the
+  arable land).
 
 ### Phase E — Drawing
 
-- **23. Cartographic rendering** — the ground plan: water, relief (contour
+- **24. Cartographic rendering** — the ground plan: water, relief (contour
   lines or hachures), hatched fields, buildings in black, monuments in
   bold, generated place names, legend, scale bar, pen-and-ink style. SVG
   export.
@@ -161,7 +167,7 @@ outward roads, found with the faubourgs, is fixed.)
 | M4 ✓ | Lots + buildings | The goal: every building |
 | M5 ✓ | Squares + monuments | Churches, cathedral, castle, market |
 | M6 ✓ | Faubourgs | Ribbons at the gates, quay, mills, abbey, leper house |
-| M7 | Countryside | |
+| M7 ✓ | Countryside | Villages, lanes, fields, woods |
 | M8 | Pen-and-ink rendering + labels + SVG | The final drawing |
 
 M2–M3 are the moment of truth: if the silhouette and the blocks look right,
