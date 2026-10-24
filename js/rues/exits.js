@@ -31,8 +31,8 @@
     id: 'exits',
     title: 'City exits',
     settings: [
-      { key: 'count', label: 'Number of exits', type: 'number', min: 2, max: 10, step: 1, default: 4 },
-      { key: 'spread', label: 'Spread weight (0: straightest paths, 1: farthest apart)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.5 }
+      { key: 'count', label: 'Number of exits', type: 'number', min: 2, max: 10, step: 1, default: 10 },
+      { key: 'spread', label: 'Spread weight (0: straightest paths, 1: farthest apart)', type: 'number', min: 0, max: 1, step: 0.05, default: 0.25 }
     ],
 
     run(state, s, rng, ctx) {

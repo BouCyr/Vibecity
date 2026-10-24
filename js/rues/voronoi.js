@@ -37,7 +37,7 @@
     id: 'voronoi',
     title: 'Voronoi diagram',
     settings: [
-      { key: 'count', label: 'Number of points', type: 'number', min: 3, max: 200, step: 1, default: 30 },
+      { key: 'count', label: 'Number of points', type: 'number', min: 3, max: 200, step: 1, default: 100 },
       {
         key: 'algo', label: 'Distribution', type: 'select', default: 'random',
         options: [
