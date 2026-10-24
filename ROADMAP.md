@@ -107,17 +107,22 @@ slight wiggle from the 20 m routing grid.
   make the Voronoi edges follow them; cells clipped by the wall and inset
   by half their street widths). Still to do, with the lots: merge some
   cells for irregular, non-convex blocks; short-edge clean-up.
-- **18. Squares and monuments** — market square (a hollowed block),
+- **20. Squares and monuments** — market square (a hollowed block),
   cathedral with parvis, one parish church per quarter (~every 300 m,
   **chevet to the east**), castle, halles, town hall, hôtel-Dieu,
   cemeteries around churches, abbey often extra muros. Monuments are
   special footprints (cross plan…).
-- **19. Lots** — each block cut into strip lots perpendicular to the street
-  (5–8 m frontage, 20–40 m deep), narrower towards the centre. Algorithm:
-  recursive OBB split, or inward offset + division of the street frontage.
-- **20. Buildings** — one footprint per lot, aligned on the street, yard at
+- **18. Lots** ✓ — each block cut into strip lots perpendicular to the street
+  (5–8 m frontage, 20–40 m deep), narrower towards the centre. Done:
+  `js/steps/lots.js` — per street edge a band of the lot depth divided by
+  lines square to the edge, each lot a chain of half-plane clips (closer to
+  its street than to the other edges, within the depth, between two lines),
+  so the bands tile exactly and the middle of the block stays gardens.
+- **19. Buildings** ✓ — one footprint per lot, aligned on the street, yard at
   the back; height and roof type (ridge line) stored. The data is
-  **render-independent**.
+  **render-independent**. Done: `js/steps/buildings.js` (the front of the
+  lot to a zone-dependent depth, floors, ridge or gable, a few empty lots).
+  Monuments come after the houses (step 20) and replace lots and blocks.
 
 ### Phase D — Outside the walls
 
@@ -144,7 +149,7 @@ slight wiggle from the 20 m routing grid.
 | M1 ✓ | Fine terrain + site | The right spot, chosen automatically; metre-scale relief |
 | M2 ✓ | Walls + gates + axes + bridge | The **silhouette** of the city |
 | M3 ✓ | Blocks + streets (Voronoi reuse) | It already looks like a city plan |
-| M4 | Lots + buildings | The goal: every building |
+| M4 ✓ | Lots + buildings | The goal: every building |
 | M5 | Squares + monuments | Churches, cathedral, castle, market |
 | M6 | Faubourgs | |
 | M7 | Countryside | |
