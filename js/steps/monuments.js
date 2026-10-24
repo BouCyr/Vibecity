@@ -87,6 +87,9 @@
     return null;
   }
 
+  global.churchPolygon = churchPolygon;
+  global.polygonInside = inside;
+
   global.MonumentsStep = {
     id: 'monuments',
     title: 'Squares and monuments',

@@ -3,7 +3,8 @@
 // centre; the bridge gate's road crosses the water on a bridge laid at the
 // shortest crossing near the gate. Roads are shortest paths over a cost grid
 // (steep ground and marsh cost, water and the wall are impassable except at
-// the bridge and the gates, earlier roads are cheap so later ones join them).
+// the bridge and the gates, earlier roads are a little cheaper so later ones
+// join them where it makes sense).
 (function (global) {
   'use strict';
 
@@ -75,6 +76,15 @@
       }
     }
     return null;
+  }
+
+  const RAYS = 72;
+  /** Depth of p inside a star-shaped wall (vertices every 2π/RAYS around its centre); negative outside. */
+  function wallDepth(wall, p) {
+    const dx = p.x - wall.centre.x, dy = p.y - wall.centre.y;
+    const t = (((Math.atan2(dy, dx) / (2 * Math.PI)) * RAYS) % RAYS + RAYS) % RAYS;
+    const k = Math.floor(t), f = t - k;
+    return wall.poly[k % RAYS].r * (1 - f) + wall.poly[(k + 1) % RAYS].r * f - Math.hypot(dx, dy);
   }
 
   /** Chaikin smoothing (2 rounds) of an open polyline, keeping its ends. */
@@ -193,10 +203,14 @@
       // Roads. Earlier roads become cheap so later ones join them.
       const roads = [];
       const isBorder = (k) => { const i = k % gw, j = (k - i) / gw; return i === 0 || j === 0 || i === gw - 1 || j === gh - 1; };
-      const layRoad = (kind, gate, fromP, isGoal, goal, through) => {
-        const path = route(cost, gw, gh, cellOf(fromP), isGoal, goal) || (goal >= 0 ? route(cost, gw, gh, cellOf(fromP), isGoal, -1) : null);
+      // To the goal cell (within two cells of it); when it cannot be reached, to any border cell.
+      const layRoad = (kind, gate, fromP, goal, through) => {
+        const gi = goal % gw, gj = (goal - gi) / gw;
+        const nearGoal = (k) => { const i = k % gw, j = (k - i) / gw; return Math.abs(i - gi) <= 2 && Math.abs(j - gj) <= 2; };
+        const path = route(cost, gw, gh, cellOf(fromP), nearGoal, goal) || route(cost, gw, gh, cellOf(fromP), isBorder, -1);
         if (!path) return null;
-        for (const k of path) cost[k] = Math.min(cost[k], 0.4);
+        // Earlier roads are somewhat cheaper, so later ones join them where it makes sense (not at any price).
+        for (const k of path) cost[k] = Math.min(cost[k], 0.7);
         let pts = path.map(centre);
         pts[0] = fromP;
         if (through) pts = through.concat(pts);
@@ -217,9 +231,11 @@
       const centrePoint = { x: state.core ? state.core.x : site.x, y: state.core ? state.core.y : site.y };
       const centreCell = cellOf(centrePoint);
       let missing = 0;
+      // Inward roads first, to the centre.
+      for (const gate of outer.gates) if (!layRoad('inward', gate, { x: gate.x, y: gate.y }, centreCell)) missing++;
+      // Then the town is closed: an outward road must not cut through it along the cheap axes and out of another gate.
+      for (let k = 0; k < cost.length; k++) if (wallDepth(outer, centre(k)) > 2) cost[k] = Infinity;
       for (const gate of outer.gates) {
-        // Inward, to the centre.
-        if (!layRoad('inward', gate, { x: gate.x, y: gate.y }, (k) => k === centreCell, centreCell)) missing++;
         // Outward, to the border: from the far bridgehead for the bridge gate.
         let start = { x: gate.x, y: gate.y }, through = null;
         if (gate.kind === 'bridge') {
@@ -230,7 +246,7 @@
         const dir = { x: Math.cos(gate.angle), y: Math.sin(gate.angle) };
         const target = borderTarget(start, dir);
         const tk = cellOf(target);
-        if (!layRoad('outward', gate, start, (k) => isBorder(k), tk, through)) missing++;
+        if (!layRoad('outward', gate, start, tk, through)) missing++;
       }
       // Where the inward roads cross the old wall: its gates.
       inner.gates = [];

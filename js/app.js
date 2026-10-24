@@ -31,7 +31,8 @@
     window.BlocksStep,
     window.LotsStep,
     window.BuildingsStep,
-    window.MonumentsStep
+    window.MonumentsStep,
+    window.FaubourgsStep
   ];
 
   const els = {

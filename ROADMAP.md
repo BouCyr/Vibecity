@@ -61,7 +61,8 @@ only milestone with nothing new to look at.
 Known rough edges after M2, to revisit with the urban fabric: a town hemmed
 in by water on two sides gets fewer gates (the 60° spacing); the old core
 wall, pulled towards the bank, can come out flat against it; roads keep a
-slight wiggle from the 20 m routing grid.
+slight wiggle from the 20 m routing grid. (The through-the-town routing of
+outward roads, found with the faubourgs, is fixed.)
 
 ### Phase A — Site and terrain detail
 
@@ -129,9 +130,14 @@ slight wiggle from the 20 m routing grid.
 
 ### Phase D — Outside the walls
 
-- **21. Faubourgs** — ribbon development along the roads past the gates,
+- **21. Faubourgs** ✓ — ribbon development along the roads past the gates,
   decreasing density, larger lots with gardens; mills on the river,
-  tanneries downstream, port and quays, leper house far away, abbeys.
+  port and quays, leper house far away, abbey. Done: `js/steps/faubourgs.js`
+  (strip lots and detached houses along every outward road, quay, mills,
+  abbey, leper house). Fixed on the way: outward roads used to cut through
+  the town along the cheap axes and out of another gate, and could end at
+  any border; the town is now closed to them and each goes to the border
+  in its gate's direction. Tanneries not done.
 - **22. Countryside** — field parcels (open-field strips or bocage)
   oriented by the lanes and the relief; market-garden belt, vineyards and
   orchards near the city; woods on steep slopes; villages with their
@@ -154,7 +160,7 @@ slight wiggle from the 20 m routing grid.
 | M3 ✓ | Blocks + streets (Voronoi reuse) | It already looks like a city plan |
 | M4 ✓ | Lots + buildings | The goal: every building |
 | M5 ✓ | Squares + monuments | Churches, cathedral, castle, market |
-| M6 | Faubourgs | |
+| M6 ✓ | Faubourgs | Ribbons at the gates, quay, mills, abbey, leper house |
 | M7 | Countryside | |
 | M8 | Pen-and-ink rendering + labels + SVG | The final drawing |
 
