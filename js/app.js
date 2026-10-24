@@ -2,7 +2,10 @@
 (function () {
   'use strict';
 
-  const MAP_W = 2000, MAP_H = 2000;
+  // A page may set window.VibecityPage = { width, height, steps, storageKey,
+  // firstCached } before loading this script; the main generator is the default.
+  const PAGE = window.VibecityPage || {};
+  const MAP_W = PAGE.width || 2000, MAP_H = PAGE.height || 2000;
 
   // Ordered generation pipeline. Each step:
   //   id, title, settings[]                       — UI description
@@ -11,7 +14,7 @@
   //       (ctx.scale: CSS px per map unit, ctx.px: map units per CSS px, ctx.visible, ctx.settings: its own)
   //   defaultVisible (optional, default true)     — whether its layer is drawn initially
   //   zIndex (optional, default: step position)   — drawing order of its layer
-  const STEPS = [
+  const STEPS = PAGE.steps || [
     window.PointsStep,
     window.VoronoiStep,
     window.AltitudeStep,
@@ -99,7 +102,7 @@
 
   // ---------- Saved settings (one slot in this browser's local storage) ----------
 
-  const STORAGE_KEY = 'vibecity.savedSettings';
+  const STORAGE_KEY = PAGE.storageKey || 'vibecity.savedSettings';
 
   function readSaved() {
     try {
@@ -429,7 +432,7 @@
   // depend only on earlier steps) but never alter what earlier steps built.
   // The terrain steps 1–10 do alter cells and nodes in place, so a change
   // there regenerates everything.
-  const FIRST_CACHED = STEPS.indexOf(window.ReliefStep);
+  const FIRST_CACHED = PAGE.firstCached !== undefined ? PAGE.firstCached : STEPS.indexOf(window.ReliefStep);
   const snapshots = [];   // snapshots[i]: the state right after step i
   const ranWith = [];     // ranWith[i]: seed + settings JSON that step i last ran with
   let stepTimes = [];

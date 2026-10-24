@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vibecity — Streets</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <aside id="panel">
+    <header class="panel-header">
+      <h1>Vibecity — Streets</h1>
+      <button id="panel-toggle" title="Collapse panel" aria-label="Collapse panel">&laquo;</button>
+    </header>
+    <div class="panel-body">
+      <section class="seed-box">
+        <label for="seed">Seed</label>
+        <div class="seed-row">
+          <input id="seed" type="text" spellcheck="false">
+          <button id="seed-random" title="Random seed">&#x1F3B2;</button>
+        </div>
+        <div class="config-row">
+          <button id="settings-save" title="Save current settings, seed included">Save</button>
+          <button id="settings-load" title="Load saved settings">Load</button>
+          <button id="settings-reset" title="Reset all settings to defaults (seed kept)">Reset</button>
+        </div>
+        <div id="config-msg" role="status"></div>
+      </section>
+      <ol id="steps"></ol>
+      <div id="status"></div>
+    </div>
+  </aside>
+  <main id="stage">
+    <canvas id="map" title="Wheel or pinch: zoom, drag: pan, double-click: fit"></canvas>
+    <canvas id="map3d" style="display: none"></canvas>
+  </main>
+
+  <script src="js/rng.js"></script>
+  <script src="js/units.js"></script>
+  <script src="js/steps/points.js"></script>
+  <script src="js/steps/voronoi.js"></script>
+  <script src="js/rues/voronoi.js"></script>
+  <script>
+    // Fine generation of streets on a small map, step by step.
+    window.VibecityPage = {
+      width: 500,
+      height: 500,
+      storageKey: 'vibecity.rues.savedSettings',
+      firstCached: 0,
+      steps: [window.StreetsVoronoiStep]
+    };
+  </script>
+  <script src="js/app.js"></script>
+</body>
+</html>

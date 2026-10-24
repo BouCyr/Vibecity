@@ -7,6 +7,12 @@ Procedural generator for the plan of a fictional medieval city. Plain HTML/JS, n
 - Seed and settings are stored in the URL hash, so a map can be shared by URL.
 - Map is 2000×2000 units — one unit is 2.5 m (`Units.METRES_PER_UNIT`, `js/units.js`), so the map is 5 km × 5 km and a scale bar sits at the bottom right. It is fitted to the window at first; wheel (or pinch) zooms about the pointer, drag pans, double-click fits the map again.
 
+## Streets page (`rues.html`)
+
+A separate page for the fine generation of streets, built on the same shell (`js/app.js`, configured through `window.VibecityPage`: map size, step list, storage key) with its own steps in `js/rues/`. The map is 500×500 units (1.25 km × 1.25 km).
+
+1. **Voronoi diagram** — 500 random points (true random or Poisson disk) and their Voronoi cells, with Lloyd relaxation; reuses the main page's points and Voronoi code.
+
 ## Steps
 
 1. **Random points** — number of points, margin from the edges, distribution (true random or Poisson disk).
