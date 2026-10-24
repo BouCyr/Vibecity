@@ -6,15 +6,19 @@
 (function (global) {
   'use strict';
 
-  /** Shortest paths from `src` over the streets: { dist, prev } per crossroads. */
-  function dijkstra(X, streets, src) {
+  /**
+   * Shortest paths from `src` over the streets: { dist, prev } per crossroads.
+   * `cost(street index, length)` gives a street's cost (default: its length).
+   */
+  function dijkstra(X, streets, src, cost) {
     const n = X.length;
     const adj = Array.from({ length: n }, () => []);
-    for (const st of streets) {
-      const w = Math.hypot(X[st.a].x - X[st.b].x, X[st.a].y - X[st.b].y);
+    streets.forEach((st, k) => {
+      const len = Math.hypot(X[st.a].x - X[st.b].x, X[st.a].y - X[st.b].y);
+      const w = cost ? cost(k, len) : len;
       adj[st.a].push([st.b, w]);
       adj[st.b].push([st.a, w]);
-    }
+    });
     const dist = new Array(n).fill(Infinity), prev = new Array(n).fill(-1), done = new Array(n).fill(false);
     dist[src] = 0;
     for (;;) {
@@ -26,6 +30,16 @@
     }
     return { dist: dist, prev: prev };
   }
+
+  /** Crossroads from `src` to `dst` along the `prev` links of a dijkstra() result. */
+  function pathTo(prev, src, dst) {
+    const path = [dst];
+    while (path[path.length - 1] !== src) path.push(prev[path[path.length - 1]]);
+    return path.reverse();
+  }
+
+  global.streetsDijkstra = dijkstra;
+  global.streetsPathTo = pathTo;
 
   global.StreetsExitsStep = {
     id: 'exits',
@@ -44,9 +58,7 @@
       const cand = [];
       X.forEach((p, i) => {
         if (!p.exit || sp.dist[i] === Infinity) return;
-        const path = [i];
-        while (path[path.length - 1] !== center) path.push(sp.prev[path[path.length - 1]]);
-        cand.push({ id: i, straight: Math.hypot(p.x - c.x, p.y - c.y) / sp.dist[i], path: path.reverse() });
+        cand.push({ id: i, straight: Math.hypot(p.x - c.x, p.y - c.y) / sp.dist[i], path: pathTo(sp.prev, center, i) });
       });
 
       // Score of a set: (1 - w) × mean straightness + w × smallest gap between
