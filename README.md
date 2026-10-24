@@ -13,6 +13,7 @@ A separate page for the fine generation of streets, built on the same shell (`js
 
 1. **Voronoi diagram** — 30 random points by default (true random or Poisson disk) and their Voronoi cells, with Lloyd relaxation, drawn with the Delaunay triangulation in blue (links between the sites of neighbouring cells); reuses the main page's points and Voronoi code.
 2. **Streets** — the sites become crossroads and the Delaunay links become streets (blue). A cell with exactly one edge on the map border gets a street from its site to the middle of that edge (mauve), where it leaves the map; corner cells, with two border edges, get none. The crossroads nearest the geometric centre of the map is the city centre (red).
+3. **City exits** — chooses 2 to 10 exits (default 4) among the ends of the mauve streets. Each exit's straightness is the straight-line distance from the city centre over the length of its shortest path along the streets (1 = perfectly straight). A set of exits scores (1 − w) × mean straightness + w × (smallest distance between two chosen exits / ideal distance), the ideal being the side of a regular polygon of that many exits inscribed in the map's circle; w is the *spread weight* (default 0.5). The set is built greedily from the straightest exit, then improved by swaps. Chosen exits and their paths from the centre are drawn in orange, with their straightness.
 
 ## Steps
 
