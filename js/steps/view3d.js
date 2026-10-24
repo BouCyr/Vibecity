@@ -242,6 +242,8 @@
         if (view.gl) attachControls(canvas);
       }
       view.settings = settings;
+      // The mesh is built on first display (not at every generation).
+      if (!state.mesh3d && state.mesh3dParams) state.mesh3d = buildMesh(state, state.mesh3dParams.s, state.mesh3dParams.w, state.mesh3dParams.h);
       if (state.mesh3d && state.mesh3d !== view.mesh && view.gl) {
         const gl = view.gl;
         view.mesh = state.mesh3d;
@@ -268,8 +270,9 @@
     ],
 
     run(state, s, rng, ctx) {
-      state.mesh3d = buildMesh(state, s, ctx.width, ctx.height);
-      return (state.mesh3d.count / 3) + ' triangles. Tick the box to show it: drag to orbit, right- or shift-drag to pan, wheel to zoom.';
+      state.mesh3d = null;
+      state.mesh3dParams = { s: s, w: ctx.width, h: ctx.height };
+      return 'Tick the box to show it (the mesh is built then): drag to orbit, right- or shift-drag to pan, wheel to zoom.';
     },
 
     draw() {}

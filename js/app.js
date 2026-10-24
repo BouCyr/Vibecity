@@ -34,7 +34,8 @@
     window.MonumentsStep,
     window.FaubourgsStep,
     window.VillagesStep,
-    window.LandUseStep
+    window.LandUseStep,
+    window.RenderStep
   ];
 
   const els = {
@@ -63,7 +64,7 @@
       config.visible[step.id] = step.defaultVisible !== false;
       config.steps[step.id] = {};
       // Copied, so that editing an array value never changes the default.
-      for (const s of step.settings) config.steps[step.id][s.key] = JSON.parse(JSON.stringify(s.default));
+      for (const s of step.settings) if (s.type !== 'button') config.steps[step.id][s.key] = JSON.parse(JSON.stringify(s.default));
     }
   }
   resetToDefaults();
@@ -215,6 +216,17 @@
     } else if (s.type === 'curve') {
       input = buildCurveEditor(s, values, id);
       label.htmlFor = id + '-canvas';
+    } else if (s.type === 'button') {
+      // A one-off action of the step (e.g. an export); nothing is stored.
+      input = document.createElement('button');
+      input.type = 'button';
+      input.textContent = s.label;
+      label.textContent = '';
+      input.addEventListener('click', () => {
+        if (!state || typeof step[s.action] !== 'function') return;
+        const result = step[s.action](state, config.steps[step.id], ctx);
+        if (typeof result === 'string') downloadText(result, (config.seed || 'map') + '.svg', 'image/svg+xml');
+      });
     } else if (s.type === 'range') {
       const out = document.createElement('output');
       out.textContent = values[s.key];
@@ -335,6 +347,20 @@
     });
     paint();
     return wrap;
+  }
+
+  /** Offers a text as a file to save. */
+  function downloadText(text, name, type) {
+    const blob = new Blob([text], { type: type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showMessage('Saved ' + name + ' (' + Math.round(text.length / 1024) + ' KB)');
   }
 
   function buildPanel() {
@@ -616,7 +642,11 @@
     ctx.visible = config.visible;
     ctx.scale = view.scale;      // CSS px per map unit (for level of detail)
     ctx.px = 1 / view.scale;     // map units per CSS px (for hairlines)
-    for (const l of layers) {
+    // The part of the map on screen, for culling.
+    ctx.viewRect = { x0: -view.x / view.scale, y0: -view.y / view.scale, x1: (stageW - view.x) / view.scale, y1: (stageH - view.y) / view.scale };
+    // A shown step marked `exclusive` (the drawing) replaces every other layer.
+    const only = layers.find((l) => l.step.exclusive && config.visible[l.step.id]);
+    for (const l of only ? [only] : layers) {
       ctx.settings = config.steps[l.step.id];  // the step's own settings, for its layer
       if (config.visible[l.step.id]) l.step.draw(g, state, ctx);
     }

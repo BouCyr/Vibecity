@@ -151,10 +151,12 @@ outward roads, found with the faubourgs, is fixed.)
 
 ### Phase E — Drawing
 
-- **24. Cartographic rendering** — the ground plan: water, relief (contour
-  lines or hachures), hatched fields, buildings in black, monuments in
-  bold, generated place names, legend, scale bar, pen-and-ink style. SVG
-  export.
+- **24. Drawing** ✓ — the ground plan: water, relief (contour lines),
+  hatched fields, buildings in black, monuments in bold, generated place
+  names, legend, scale bar, pen-and-ink style. SVG export. Done:
+  `js/steps/render.js` against `js/pen.js` (canvas and SVG pens),
+  `js/names.js` for the names. Level of detail and viewport culling at
+  draw time; the 3D mesh is built lazily.
 
 ## 3. Milestones (each one shows something)
 
@@ -168,7 +170,7 @@ outward roads, found with the faubourgs, is fixed.)
 | M5 ✓ | Squares + monuments | Churches, cathedral, castle, market |
 | M6 ✓ | Faubourgs | Ribbons at the gates, quay, mills, abbey, leper house |
 | M7 ✓ | Countryside | Villages, lanes, fields, woods |
-| M8 | Pen-and-ink rendering + labels + SVG | The final drawing |
+| M8 ✓ | Pen-and-ink rendering + labels + SVG | The final drawing |
 
 M2–M3 are the moment of truth: if the silhouette and the blocks look right,
 the rest is filling; if they look wrong, we know early.

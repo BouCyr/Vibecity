@@ -182,6 +182,7 @@
       g.putImageData(img, 0, 0);
 
       state.landUse = use;
+      state.fieldSystem = s.system;
       state.landUseImage = cv;
       state.fieldEdges = edges;
       state.fieldLines = strips;
