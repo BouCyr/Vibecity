@@ -9,7 +9,7 @@
     id: 'voronoi',
     title: 'Voronoi diagram',
     settings: [
-      { key: 'count', label: 'Number of points', type: 'range', min: 3, max: 5000, step: 1, default: 30 },
+      { key: 'count', label: 'Number of points', type: 'number', min: 3, max: 200, step: 1, default: 30 },
       {
         key: 'algo', label: 'Distribution', type: 'select', default: 'random',
         options: [
@@ -17,14 +17,16 @@
           { value: 'poisson', label: 'Poisson disk' }
         ]
       },
-      { key: 'relax', label: 'Lloyd relaxation', type: 'range', min: 0, max: 10, step: 1, default: 2 },
+      { key: 'relax', label: 'Lloyd relaxation', type: 'number', min: 0, max: 10, step: 1, default: 2 },
       { key: 'delaunay', label: 'Show Delaunay', type: 'select', default: 'yes', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
       { key: 'sites', label: 'Show sites', type: 'select', default: 'yes', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] }
     ],
 
     run(state, s, rng, ctx) {
-      global.PointsStep.run(state, { count: s.count, margin: 0, algo: s.algo }, rng, ctx);
-      return global.VoronoiStep.run(state, { relax: s.relax }, rng, ctx);
+      // Typed values are not bounded by the input: keep them in range here.
+      const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(v) || lo));
+      global.PointsStep.run(state, { count: clamp(s.count, 3, 200), margin: 0, algo: s.algo }, rng, ctx);
+      return global.VoronoiStep.run(state, { relax: clamp(s.relax, 0, 10) }, rng, ctx);
     },
 
     draw(g, state, ctx) {
