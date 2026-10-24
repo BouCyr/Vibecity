@@ -191,10 +191,11 @@
     },
 
     // Outlines the cells changed by this step: blue = became sea, orange = became land.
-    draw(g, state) {
+    draw(g, state, ctx) {
+      const px = (ctx && ctx.px) || 1;  // map units per screen px: constant widths on screen
       g.save();
-      g.lineWidth = 4;
-      g.setLineDash([10, 6]);
+      g.lineWidth = 2 * px;
+      g.setLineDash([5 * px, 3 * px]);
       for (const ch of state.seaChanges) {
         const p = state.cells[ch.cell].poly;
         g.strokeStyle = ch.toSea ? '#1d3e7a' : '#d2691e';

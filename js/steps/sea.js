@@ -233,10 +233,11 @@
       return slantInfo + nSea + ' sea cells, sea level ' + (nSea ? state.seaLevel.toFixed(2) : '—') + ', ' + state.coastline.length + ' coast edges';
     },
 
-    draw(g, state) {
+    draw(g, state, ctx) {
+      const px = (ctx && ctx.px) || 1;  // map units per screen px: constant widths on screen
       g.fillStyle = '#5f86a8';
       g.strokeStyle = g.fillStyle;
-      g.lineWidth = 1;
+      g.lineWidth = px;
       for (const c of state.cells) {
         if (!c.sea || !c.poly.length) continue;
         g.beginPath();
@@ -248,7 +249,7 @@
       }
 
       g.strokeStyle = '#2f3f52';
-      g.lineWidth = 3;
+      g.lineWidth = 1.5 * px;
       g.lineCap = 'round';
       g.beginPath();
       for (const [a, b] of state.coastline) {
@@ -260,8 +261,8 @@
       // Reference coast curve.
       g.save();
       g.strokeStyle = 'rgba(29, 62, 122, .7)';
-      g.lineWidth = 5;
-      g.setLineDash([16, 12]);
+      g.lineWidth = 2.5 * px;
+      g.setLineDash([8 * px, 6 * px]);
       for (const guide of state.coastGuides) {
         g.beginPath();
         guide.line.forEach((pt, i) => (i ? g.lineTo(pt.x, pt.y) : g.moveTo(pt.x, pt.y)));

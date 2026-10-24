@@ -221,11 +221,12 @@
     },
 
     // Marks the merged nodes.
-    draw(g, state) {
+    draw(g, state, ctx) {
+      const px = (ctx && ctx.px) || 1;  // map units per screen px: constant widths on screen
       g.fillStyle = '#c0392b';
       for (const p of state.mergedPoints) {
         g.beginPath();
-        g.arc(p.x, p.y, 6, 0, Math.PI * 2);
+        g.arc(p.x, p.y, 3 * px, 0, Math.PI * 2);
         g.fill();
       }
     }
