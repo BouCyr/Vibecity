@@ -1,7 +1,8 @@
 // Streets page, step 2 — the streets graph: the Voronoi sites are crossroads and
 // the Delaunay links between neighbouring sites are streets. A cell with exactly
 // one edge on the map border also gets a street from its site to the middle of
-// that edge, where it leaves the map.
+// that edge, where it leaves the map. The crossroads nearest the middle of the
+// map is the city centre.
 (function (global) {
   'use strict';
 
@@ -42,9 +43,16 @@
         streets.push({ a: i, b: crossroads.length - 1, kind: 'border' });
         exits++;
       });
+      // City centre: the site nearest the geometric centre of the map.
+      let center = 0, best = Infinity;
+      cells.forEach((c, i) => {
+        const d = Math.hypot(c.site.x - ctx.width / 2, c.site.y - ctx.height / 2);
+        if (d < best) { best = d; center = i; }
+      });
       state.crossroads = crossroads;
       state.streets = streets;
-      return cells.length + ' crossroads, ' + streets.length + ' streets (' + exits + ' leaving the map)';
+      state.center = center;
+      return cells.length + ' crossroads, ' + streets.length + ' streets (' + exits + ' leaving the map), city centre: crossroads ' + center;
     },
 
     draw(g, state, ctx) {
@@ -68,6 +76,15 @@
         g.arc(c.x, c.y, (c.exit ? 3 : 4) * px, 0, Math.PI * 2);
         g.fill();
       }
+      // City centre: a red disc ringed in dark.
+      const c = X[state.center];
+      g.fillStyle = '#c8342b';
+      g.strokeStyle = '#1f2a44';
+      g.lineWidth = 2 * px;
+      g.beginPath();
+      g.arc(c.x, c.y, 8 * px, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
     }
   };
 })(window);
